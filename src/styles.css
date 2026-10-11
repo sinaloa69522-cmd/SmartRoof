@@ -208,6 +208,9 @@ td input.pr { max-width: 110px; text-align: right; font-family: var(--f-mono); }
 /* report & documents */
 .doc { background: var(--paper); color: var(--paper-ink); border: 1px solid var(--line); border-radius: var(--r); padding: 32px clamp(16px, 4vw, 40px); max-width: 920px; width: 100%; margin-inline: auto; display: flex; flex-direction: column; gap: 22px; --line: #d9dee4; --muted: #5a6573; --ink: #111821; --surface-2: #eef1f4; --accent-soft: #fff3c7; --diag-fill: #f6e7b0; }
 .doc th { color: #5a6573; }
+.doc { position: relative; isolation: isolate; overflow: hidden; }
+.doc .wm { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(-18deg); width: min(70%, 520px); max-height: 70%; object-fit: contain; pointer-events: none; z-index: -1; user-select: none; }
+.doc-logo { display: block; max-height: 64px; max-width: 200px; margin: 0 0 6px auto; object-fit: contain; }
 .doc-head { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; border-bottom: 3px solid var(--paper-ink); padding-bottom: 14px; }
 .doc-head h1 { font-size: 1.6rem; }
 .doc-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }

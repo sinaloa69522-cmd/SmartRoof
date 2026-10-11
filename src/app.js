@@ -767,6 +767,25 @@ function googleSession() {
   return p;
 }
 
+// Logo de la empresa: encabezado y marca de agua en documentos
+const logoImg = () => state.settings.logo ? `<img class="doc-logo" src="${state.settings.logo}" alt="${esc(state.settings.company)}">` : '';
+const wmark = () => state.settings.logo && state.settings.wmOn !== false ? `<img class="wm" src="${state.settings.logo}" alt="" aria-hidden="true" style="opacity:${(state.settings.wmOpacity ?? 8) / 100}">` : '';
+function loadLogo(file) {
+  const fr = new FileReader();
+  fr.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, 700 / Math.max(img.width, img.height));
+      const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      state.settings.logo = c.toDataURL('image/png'); save(); toast('Logo guardado'); render();
+    };
+    img.onerror = () => toast('No se pudo leer esa imagen. Usa PNG o JPG.');
+    img.src = fr.result;
+  };
+  fr.readAsDataURL(file);
+}
+
 // ---------- Informe ----------
 function diagramSVG(m, opts = {}) {
   if (!m || !m.facets.length && !m.lines.length) return '<div class="empty">Sin dibujo todavía.</div>';
@@ -797,9 +816,9 @@ function tabReport(j) {
   if (!m || !m.facets.length) return `<div class="panel empty"><b>Todavía no hay medición.</b><span>Dibuja las facetas del techo para generar el informe.</span><button class="btn primary" data-act="tab" data-tab="medicion">Ir a Medición</button></div>`;
   const r = calc(m); const q = quantities(r, r.wasteUsed);
   return `<div class="row">${!inFrame ? '<button class="btn" data-act="print">Imprimir / PDF</button>' : ''}<button class="btn" data-act="tab" data-tab="medicion">Editar medición</button><button class="btn primary" data-act="tab" data-tab="propuesta">Crear propuesta →</button></div>
-  <article class="doc">
+  <article class="doc">${wmark()}
     <div class="doc-head"><div><span class="label">Informe de medición</span><h1>${esc(j.address || j.name)}</h1><p class="muted">Preparado para ${esc(j.name)} · ${fmtDate(today())}</p></div>
-      <div style="text-align:right"><b>${esc(state.settings.company)}</b><p class="small muted">${esc(state.settings.phone)}<br>${esc(state.settings.license)}</p></div></div>
+      <div style="text-align:right">${logoImg()}<b>${esc(state.settings.company)}</b><p class="small muted">${esc(state.settings.phone)}<br>${esc(state.settings.license)}</p></div></div>
     <div class="doc-tiles"><div><span class="label">Área total</span><b>${num(r.area)} ft²</b><span class="small muted">${num(r.area * 0.092903, 1)} m²</span></div>
       <div><span class="label">Cuadros</span><b>${num(r.squares, 2)}</b><span class="small muted">1 sq = 100 ft²</span></div>
       <div><span class="label">Pendiente predominante</span><b>${r.pitch}/12</b><span class="small muted">${num(Math.atan(r.pitch / 12) * 180 / Math.PI, 1)}°</span></div>
@@ -878,9 +897,9 @@ function viewClient() {
   if (clientSel == null || clientSel >= p.options.length) clientSel = p.selected ?? Math.min(1, p.options.length - 1);
   const signed = p.status === 'signed';
   return `<div class="row"><button class="btn sm ghost" data-act="tab" data-tab="propuesta" data-id="${j.id}">← Volver al editor</button><span class="small muted">Así verá tu cliente la propuesta. Puede elegir opción y firmar aquí mismo, en tu tableta o teléfono.</span></div>
-  <article class="doc">
+  <article class="doc">${wmark()}
     <div class="doc-head"><div><span class="label">Propuesta de techo</span><h1>${esc(j.name)}</h1><p class="muted">${esc(j.address)}</p></div>
-      <div style="text-align:right"><b>${esc(s.company)}</b><p class="small muted">${esc(s.phone)}<br>${esc(s.email)}<br>${esc(s.license)}</p></div></div>
+      <div style="text-align:right">${logoImg()}<b>${esc(s.company)}</b><p class="small muted">${esc(s.phone)}<br>${esc(s.email)}<br>${esc(s.license)}</p></div></div>
     <p>${esc(p.intro)}</p>
     ${r && !r.empty && r.ok ? `<div class="grid2" style="align-items:center"><div>${diagramSVG(m, { lengths: false })}</div>
       <div class="mstats"><span>Área del techo</span><span class="n">${num(r.area)} ft²</span><span>Cuadros</span><span class="n">${num(r.squares, 1)}</span><span>Pendiente</span><span class="n">${r.pitch}/12</span><span>Facetas</span><span class="n">${m.facets.length}</span><span>Aleros</span><span class="n">${num(r.lines.eave)} ft</span><span>Cumbreras y limatesas</span><span class="n">${num(r.lines.ridge + r.lines.hip)} ft</span></div></div>` : ''}
@@ -924,13 +943,13 @@ function tabInvoice(j) {
   return `<div class="row"><span class="pill ${t.cls}">${t.status}</span><span class="spacer"></span>${!inFrame ? '<button class="btn" data-act="print">Imprimir / PDF</button>' : ''}<button class="btn" data-act="copyInvoice">Copiar resumen para enviar</button></div>
   <textarea id="copyFallback" hidden readonly style="width:100%;min-height:120px"></textarea>
   <div class="two">
-  <article class="doc" style="max-width:none">
+  <article class="doc" style="max-width:none">${wmark()}
     <div class="doc-head"><div><span class="label">Factura</span><h1>${esc(inv.number)}</h1><p class="muted small">Emitida ${fmtDate(inv.issued)} · Vence ${fmtDate(inv.due)}</p></div>
-      <div style="text-align:right"><b>${esc(s.company)}</b><p class="small muted">${esc(s.phone)}<br>${esc(s.email)}</p></div></div>
+      <div style="text-align:right">${logoImg()}<b>${esc(s.company)}</b><p class="small muted">${esc(s.phone)}<br>${esc(s.email)}</p></div></div>
     <div><span class="label">Facturar a</span><p><b>${esc(j.name)}</b><br>${esc(j.address)}<br>${esc(j.email)}</p></div>
     <div class="tablewrap"><table><thead><tr><th>Concepto</th><th class="n">Cant.</th><th class="n">Precio</th><th class="n">Importe</th><th></th></tr></thead><tbody>
-      ${inv.lines.map((l, i) => `<tr><td><input id="il-${i}" data-chg="invLine" data-i="${i}" data-k="name" value="${esc(l.name)}" style="background:#fff;color:#111821;border-color:#dde2e8"></td><td class="n"><input class="qty" id="iq-${i}" type="number" step="any" data-chg="invLine" data-i="${i}" data-k="qty" value="${l.qty}" style="background:#fff;color:#111821;border-color:#dde2e8"></td>
-        <td class="n"><input class="pr" id="ip-${i}" type="number" step="any" data-chg="invLine" data-i="${i}" data-k="price" value="${l.price}" style="background:#fff;color:#111821;border-color:#dde2e8"></td><td class="n">${money(l.qty * l.price)}</td><td><button class="btn sm ghost" data-act="delInvLine" data-i="${i}" aria-label="Quitar" style="color:#5a6573">✕</button></td></tr>`).join('')}
+      ${inv.lines.map((l, i) => `<tr><td><input id="il-${i}" data-chg="invLine" data-i="${i}" data-k="name" value="${esc(l.name)}" style="background:transparent;color:#111821;border-color:#dde2e8"></td><td class="n"><input class="qty" id="iq-${i}" type="number" step="any" data-chg="invLine" data-i="${i}" data-k="qty" value="${l.qty}" style="background:transparent;color:#111821;border-color:#dde2e8"></td>
+        <td class="n"><input class="pr" id="ip-${i}" type="number" step="any" data-chg="invLine" data-i="${i}" data-k="price" value="${l.price}" style="background:transparent;color:#111821;border-color:#dde2e8"></td><td class="n">${money(l.qty * l.price)}</td><td><button class="btn sm ghost" data-act="delInvLine" data-i="${i}" aria-label="Quitar" style="color:#5a6573">✕</button></td></tr>`).join('')}
     </tbody></table></div>
     <div class="row"><button class="btn sm" data-act="addInvLine">Agregar concepto (cambio de obra)</button></div>
     <div class="totals"><span>Subtotal</span><span class="n">${money(t.sub)}</span>${t.disc ? `<span>Descuento</span><span class="n">−${money(t.disc)}</span>` : ''}
@@ -1031,6 +1050,13 @@ function viewSettings() {
       <label class="field"><span>Impuesto por defecto %</span><input id="sTax" type="number" step="0.01" data-chg="set" data-k="taxRate" value="${s.taxRate}"></label></div>
       <label class="field"><span>Mensaje de propuesta por defecto</span><textarea id="sIntro" data-chg="set" data-k="intro">${esc(s.intro)}</textarea></label>
       <label class="field"><span>Términos por defecto</span><textarea id="sTerms" data-chg="set" data-k="terms">${esc(s.terms)}</textarea></label>
+      <div class="stack" style="gap:8px"><span class="field"><span style="font-size:12px;color:var(--muted);font-weight:600">Logo de la empresa</span></span>
+        <div class="row">${s.logo ? `<img src="${s.logo}" alt="Logo actual" style="max-height:64px;max-width:180px;background:#fff;border:1px solid var(--line);border-radius:6px;padding:4px">` : '<span class="small muted">Sin logo todavía.</span>'}
+          <label class="btn sm">${s.logo ? 'Cambiar logo' : 'Subir logo'}<input id="logoFile" type="file" accept="image/*" data-chg="logo" hidden></label>
+          ${s.logo ? '<button class="btn sm danger" data-act="delLogo">Quitar</button>' : ''}</div>
+        ${s.logo ? `<label class="row small" style="gap:6px"><input type="checkbox" id="wmOn" data-chg="wmOn" ${s.wmOn !== false ? 'checked' : ''}> Mostrar como marca de agua en propuestas, facturas e informes</label>
+        <label class="field"><span>Intensidad de la marca de agua: <b id="wmVal">${s.wmOpacity ?? 8}%</b></span><input id="wmOp" type="range" min="3" max="25" value="${s.wmOpacity ?? 8}" data-inp="wmOp"></label>` : '<p class="small muted">PNG con fondo transparente se ve mejor.</p>'}
+      </div>
       <label class="field"><span>Llave de Google Maps (para el satélite de Google)</span><input id="sGKey" data-chg="set" data-k="googleKey" value="${esc(s.googleKey || '')}" placeholder="AIza…" autocomplete="off"></label>
       <label class="field"><span>Centro del mapa satelital (lat, lng)</span><input id="sHome" data-chg="setHome" value="${s.homeCenter.join(', ')}"></label>
     </div>
@@ -1142,6 +1168,7 @@ const ACT = {
   addCat: () => { state.catalog.push({ id: uid(), name: 'Producto nuevo', unit: 'pza', kind: 'material', formula: 'manual', cost: 0, price: 0 }); save(); render(); },
   delCat: el => { if (!armed(el)) return; state.catalog.splice(+el.dataset.i, 1); save(); render(); },
   // respaldo
+  delLogo: el => { if (!armed(el)) return; delete state.settings.logo; save(); render(); },
   backup: () => copyText(JSON.stringify(state), $('#copyFallback')),
   showImport: () => { $('#importForm').hidden = false; $('#importText').focus(); },
 };
@@ -1155,6 +1182,8 @@ const CHG = {
   stage: el => { const j = J(); setStage(j, el.value); save(); render(); },
   jobField: el => { const j = J(); j[el.dataset.k] = el.value; save(); if (el.dataset.k === 'name' || el.dataset.k === 'address') render(); },
   image: el => { if (el.files[0]) loadImage(el.files[0]); },
+  logo: el => { if (el.files[0]) loadLogo(el.files[0]); },
+  wmOn: el => { state.settings.wmOn = el.checked; save(); },
   satSrc: el => { state.settings.satSource = el.value; save(); initMap(); },
   satEnh: el => { state.settings.satEnhance = el.checked; save(); $('#map').classList.toggle('enhance', el.checked); },
   facetPitch: el => { const m = meas(); const f = m.facets.find(x => x.id === M.sel?.id); if (f) { pushHist(); f.pitch = +el.value; commit(); } },
@@ -1175,6 +1204,7 @@ const CHG = {
   setHome: el => { const p = el.value.split(',').map(Number); if (p.length === 2 && p.every(isFinite)) { state.settings.homeCenter = p; save(); toast('Guardado'); } else toast('Escribe latitud y longitud separadas por coma'); },
 };
 const INP = {
+  wmOp: el => { state.settings.wmOpacity = +el.value; $('#wmVal').textContent = el.value + '%'; save(); },
   search: el => { filter = el.value; const pos = el.selectionStart; render(); const n = $('#jobSearch'); n.focus(); n.setSelectionRange(pos, pos); },
   est: el => { est[el.dataset.k] = el.value; if (el.dataset.k === 'addr') return; const c = estCalc(); $('#estRange').textContent = `${money(c.lo)} – ${money(c.hi)}`; $('#estSq').textContent = `≈ ${num(c.sq, 1)} cuadros de techo`; },
 };
