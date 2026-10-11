@@ -1255,8 +1255,29 @@ document.addEventListener('drop', e => {
 });
 window.addEventListener('hashchange', () => { const r = parseHash(); if (JSON.stringify(r) !== JSON.stringify(route)) go(r); });
 
+// ---------- instalar como app ----------
+let installEvt = null;
+const isStandalone = () => { try { return matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; } catch { return false; } };
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+function updInstall() { const b = $('#installBtn'); if (b) b.hidden = inFrame || isStandalone() || !window.isSecureContext; }
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; updInstall(); });
+window.addEventListener('appinstalled', () => { installEvt = null; updInstall(); toast('SmartRoof quedó instalada'); });
+ACT.install = async () => {
+  if (installEvt) {
+    installEvt.prompt();
+    try { const c = await installEvt.userChoice; if (c.outcome === 'accepted') toast('Instalando SmartRoof…'); } catch { }
+    installEvt = null; updInstall(); return;
+  }
+  const steps = isIOS
+    ? `<ol style="margin:0;padding-left:20px;display:grid;gap:8px"><li>Abre esta página en <b>Safari</b>.</li><li>Toca el botón <b>Compartir</b> (el cuadro con la flecha hacia arriba).</li><li>Elige <b>Agregar a pantalla de inicio</b> y toca <b>Agregar</b>.</li></ol>`
+    : `<ol style="margin:0;padding-left:20px;display:grid;gap:8px"><li>En <b>Chrome o Edge</b>, abre el menú <b>⋮</b> del navegador.</li><li>Toca <b>Instalar app</b> o <b>Agregar a pantalla principal</b>.</li><li>Confirma con <b>Instalar</b>.</li></ol><p class="small muted">Si no aparece la opción, recarga la página y espera unos segundos.</p>`;
+  openModal(`<h2>Instalar SmartRoof</h2><p>Tendrás SmartRoof con su propio ícono, en pantalla completa y sin la barra del navegador.</p>${steps}<div class="row" style="justify-content:flex-end"><button class="btn primary" data-act="closeModal">Entendido</button></div>`);
+};
+if ('serviceWorker' in navigator && window.isSecureContext && location.protocol !== 'file:' && !inFrame) { try { navigator.serviceWorker.register('sw.js').catch(() => { }); } catch { } }
+
 // ---------- inicio ----------
 state = load();
 if (!state) { seedState(); save(); }
 route = parseHash();
 render();
+updInstall();

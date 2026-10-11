@@ -3,6 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#1f2b3b">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="SmartRoof">
+<meta name="mobile-web-app-capable" content="yes">
 </head>
 <body>
 <title>SmartRoof</title>
@@ -753,6 +759,8 @@ a { color: var(--info); }
 .nav svg { width: 18px; height: 18px; flex: none; }
 .side .grow { flex: 1; }
 .side .cta { margin: 10px 4px 0; }
+.side .install { background: transparent; color: var(--brand-ink); border-color: rgba(255,255,255,.25); justify-content: center; }
+.side .install:hover { border-color: var(--accent); }
 main { min-width: 0; padding: 24px 28px 48px; display: flex; flex-direction: column; gap: 20px; }
 .pagehead { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 .pagehead .sub { color: var(--muted); margin-top: 4px; }
@@ -934,6 +942,7 @@ td input.pr { max-width: 110px; text-align: right; font-family: var(--f-mono); }
   .nav button span { display: none; }
   .nav button[aria-current="true"] { box-shadow: inset 0 -3px 0 var(--accent); }
   .side .cta { margin: 0 0 0 auto; }
+  .side .install + .cta { margin-left: 0; }
   .side .cta span { display: none; }
   main { padding: 16px 16px 40px; }
   .grid2, .grid3, .doc-tiles { grid-template-columns: minmax(0, 1fr); }
@@ -950,6 +959,7 @@ td input.pr { max-width: 110px; text-align: right; font-family: var(--f-mono); }
     <div class="brand"><span style="color:var(--brand-ink)"><svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true"><path d="M2 18 16 6l14 12" fill="none" stroke="var(--accent)" stroke-width="3.2" stroke-linejoin="round"/><path d="M7 17v10h18V17" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M12 27v-6h8v6" fill="none" stroke="currentColor" stroke-width="2"/></svg></span><div><b id="brandName">SmartRoof</b><small id="brandCo"></small></div></div>
     <div class="nav" id="nav"></div>
     <div class="grow"></div>
+    <button class="btn cta install" id="installBtn" data-act="install" hidden title="Instalar SmartRoof"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg><span>Instalar app</span></button>
     <button class="btn primary cta" data-act="newJob"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>Nuevo trabajo</span></button>
   </nav>
   <main id="main"></main>
@@ -2215,11 +2225,32 @@ document.addEventListener('drop', e => {
 });
 window.addEventListener('hashchange', () => { const r = parseHash(); if (JSON.stringify(r) !== JSON.stringify(route)) go(r); });
 
+// ---------- instalar como app ----------
+let installEvt = null;
+const isStandalone = () => { try { return matchMedia('(display-mode: standalone)').matches || navigator.standalone === true; } catch { return false; } };
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+function updInstall() { const b = $('#installBtn'); if (b) b.hidden = inFrame || isStandalone() || !window.isSecureContext; }
+window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installEvt = e; updInstall(); });
+window.addEventListener('appinstalled', () => { installEvt = null; updInstall(); toast('SmartRoof quedó instalada'); });
+ACT.install = async () => {
+  if (installEvt) {
+    installEvt.prompt();
+    try { const c = await installEvt.userChoice; if (c.outcome === 'accepted') toast('Instalando SmartRoof…'); } catch { }
+    installEvt = null; updInstall(); return;
+  }
+  const steps = isIOS
+    ? `<ol style="margin:0;padding-left:20px;display:grid;gap:8px"><li>Abre esta página en <b>Safari</b>.</li><li>Toca el botón <b>Compartir</b> (el cuadro con la flecha hacia arriba).</li><li>Elige <b>Agregar a pantalla de inicio</b> y toca <b>Agregar</b>.</li></ol>`
+    : `<ol style="margin:0;padding-left:20px;display:grid;gap:8px"><li>En <b>Chrome o Edge</b>, abre el menú <b>⋮</b> del navegador.</li><li>Toca <b>Instalar app</b> o <b>Agregar a pantalla principal</b>.</li><li>Confirma con <b>Instalar</b>.</li></ol><p class="small muted">Si no aparece la opción, recarga la página y espera unos segundos.</p>`;
+  openModal(`<h2>Instalar SmartRoof</h2><p>Tendrás SmartRoof con su propio ícono, en pantalla completa y sin la barra del navegador.</p>${steps}<div class="row" style="justify-content:flex-end"><button class="btn primary" data-act="closeModal">Entendido</button></div>`);
+};
+if ('serviceWorker' in navigator && window.isSecureContext && location.protocol !== 'file:' && !inFrame) { try { navigator.serviceWorker.register('sw.js').catch(() => { }); } catch { } }
+
 // ---------- inicio ----------
 state = load();
 if (!state) { seedState(); save(); }
 route = parseHash();
 render();
+updInstall();
 
 </script>
 
