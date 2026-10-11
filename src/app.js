@@ -523,7 +523,7 @@ function initMap() {
     const needGeo = !m.center; if (!m.center) m.center = state.settings.homeCenter.slice();
     if (needGeo && getJob(route.id).address) setTimeout(() => geocode(getJob(route.id).address).then(ll => ll && centerOn(ll)), 0);
     map = L.map(el, { doubleClickZoom: false, maxZoom: 22 }).setView(m.center, m.zoom || 19);
-    const tl = satLayer(state.settings.satSource || 'esri').addTo(map);
+    const tl = satLayer(state.settings.satSource || (state.settings.googleKey ? 'google' : 'esri')).addTo(map);
     el.classList.toggle('enhance', state.settings.satEnhance === true);
     let good = 0, bad = 0;
     tl.on('tileload', () => { good++; $('#satNote') && ($('#satNote').hidden = true); });
@@ -642,7 +642,7 @@ function updatePanel() {
       ${m.mode === 'image' ? `<label class="btn sm" style="align-self:flex-start">Subir foto aérea o captura<input id="imgFile" type="file" accept="image/*" data-chg="image" hidden></label>
         ${m.image ? (m.ftPerUnit ? `<p class="small muted">Escala: 1 px = ${num(m.ftPerUnit, 3)} ft</p>` : '<p class="small" style="color:var(--warn)">Falta calibrar la escala: usa «Calibrar escala» sobre la barra de escala o una medida conocida.</p>') : '<p class="small muted">Sube una captura satelital (Google Maps, Nearmap, EagleView) o foto de dron.</p>'}` : ''}
       ${m.mode === 'sat' ? `<form class="row" data-form="geo"><input id="geoQ" name="q" placeholder="Dirección o lat, lng" value="${esc(j.address || '')}" style="flex:1"><button class="btn sm">Ir</button></form><button class="btn sm" data-act="myLoc" style="align-self:flex-start">Usar mi ubicación (en la obra)</button>
-      <label class="field"><span>Imagen satelital</span><select id="satSrc" data-chg="satSrc">${Object.entries(SAT_SOURCES).map(([k, v]) => `<option value="${k}" ${k === (state.settings.satSource || 'esri') ? 'selected' : ''}>${v.name}</option>`).join('')}</select></label>
+      <label class="field"><span>Imagen satelital</span><select id="satSrc" data-chg="satSrc">${Object.entries(SAT_SOURCES).map(([k, v]) => `<option value="${k}" ${k === (state.settings.satSource || (state.settings.googleKey ? 'google' : 'esri')) ? 'selected' : ''}>${v.name}</option>`).join('')}</select></label>
       <label class="row small" style="gap:6px"><input type="checkbox" id="satEnh" data-chg="satEnh" ${state.settings.satEnhance === true ? 'checked' : ''}> Realzar contraste y brillo</label>
       <p class="small muted">Si una imagen se ve borrosa o vieja, prueba otra fuente.</p>` : ''}
     </div>
@@ -726,10 +726,25 @@ const SAT_SOURCES = {
   esri: { name: 'Esri (recomendada)', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', native: 19, attr: 'Imágenes © Esri, Maxar' },
   clarity: { name: 'Esri Clarity', url: 'https://clarity.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', native: 19, attr: 'Imágenes © Esri, Maxar, Vexcel' },
   bing: { name: 'Bing', native: 19, attr: 'Imágenes © Microsoft' },
+  google: { name: 'Google (requiere llave)', native: 21, attr: 'Imágenes © Google' },
 };
 function satLayer(k) {
   const s = SAT_SOURCES[k] || SAT_SOURCES.esri;
   const opts = { maxZoom: 22, maxNativeZoom: s.native, attribution: s.attr, detectRetina: false };
+  if (k === 'google') {
+    const key = state.settings.googleKey;
+    const G = L.TileLayer.extend({
+      createTile(c, done) {
+        const img = document.createElement('img'); img.alt = '';
+        googleSession().then(sess => { img.src = `https://tile.googleapis.com/v1/2dtiles/${c.z}/${c.x}/${c.y}?session=${sess}&key=${encodeURIComponent(key)}`; })
+          .catch(() => done(new Error('google'), img));
+        img.onload = () => done(null, img); img.onerror = () => done(new Error('tile'), img);
+        return img;
+      },
+    });
+    if (!key) { setTimeout(() => toast('Agrega tu llave de Google Maps en Ajustes'), 300); return L.tileLayer(SAT_SOURCES.esri.url, { maxZoom: 22, maxNativeZoom: 19 }); }
+    return new G('', opts);
+  }
   if (k === 'bing') {
     const B = L.TileLayer.extend({
       getTileUrl(c) {
@@ -740,6 +755,16 @@ function satLayer(k) {
     return new B('', opts);
   }
   return L.tileLayer(s.url, opts);
+}
+
+let gSess = null;
+function googleSession() {
+  const key = state.settings.googleKey;
+  if (gSess && gSess.key === key && gSess.exp > Date.now()) return gSess.p;
+  const p = fetch('https://tile.googleapis.com/v1/createSession?key=' + encodeURIComponent(key), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mapType: 'satellite', language: 'es-MX', region: 'MX', scale: 'scaleFactor2x', highDpi: true }) })
+    .then(r => r.json()).then(d => { if (!d.session) { toast('Google rechazó la llave: ' + (d.error?.message || 'revisa que «Map Tiles API» esté activada')); throw new Error('no session'); } return d.session; });
+  gSess = { key, p, exp: Date.now() + 12 * 3600e3 }; p.catch(() => { gSess = null; });
+  return p;
 }
 
 // ---------- Informe ----------
@@ -1006,6 +1031,7 @@ function viewSettings() {
       <label class="field"><span>Impuesto por defecto %</span><input id="sTax" type="number" step="0.01" data-chg="set" data-k="taxRate" value="${s.taxRate}"></label></div>
       <label class="field"><span>Mensaje de propuesta por defecto</span><textarea id="sIntro" data-chg="set" data-k="intro">${esc(s.intro)}</textarea></label>
       <label class="field"><span>Términos por defecto</span><textarea id="sTerms" data-chg="set" data-k="terms">${esc(s.terms)}</textarea></label>
+      <label class="field"><span>Llave de Google Maps (para el satélite de Google)</span><input id="sGKey" data-chg="set" data-k="googleKey" value="${esc(s.googleKey || '')}" placeholder="AIza…" autocomplete="off"></label>
       <label class="field"><span>Centro del mapa satelital (lat, lng)</span><input id="sHome" data-chg="setHome" value="${s.homeCenter.join(', ')}"></label>
     </div>
     <div class="stack">
