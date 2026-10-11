@@ -1483,8 +1483,8 @@ function initMap() {
     const needGeo = !m.center; if (!m.center) m.center = state.settings.homeCenter.slice();
     if (needGeo && getJob(route.id).address) setTimeout(() => geocode(getJob(route.id).address).then(ll => ll && centerOn(ll)), 0);
     map = L.map(el, { doubleClickZoom: false, maxZoom: 22 }).setView(m.center, m.zoom || 19);
-    const tl = satLayer(state.settings.satSource || 'clarity').addTo(map);
-    el.classList.toggle('enhance', state.settings.satEnhance !== false);
+    const tl = satLayer(state.settings.satSource || 'esri').addTo(map);
+    el.classList.toggle('enhance', state.settings.satEnhance === true);
     let good = 0, bad = 0;
     tl.on('tileload', () => { good++; $('#satNote') && ($('#satNote').hidden = true); });
     tl.on('tileerror', () => { if (++bad >= 2 && !good) showSatNote(); });
@@ -1602,8 +1602,8 @@ function updatePanel() {
       ${m.mode === 'image' ? `<label class="btn sm" style="align-self:flex-start">Subir foto aérea o captura<input id="imgFile" type="file" accept="image/*" data-chg="image" hidden></label>
         ${m.image ? (m.ftPerUnit ? `<p class="small muted">Escala: 1 px = ${num(m.ftPerUnit, 3)} ft</p>` : '<p class="small" style="color:var(--warn)">Falta calibrar la escala: usa «Calibrar escala» sobre la barra de escala o una medida conocida.</p>') : '<p class="small muted">Sube una captura satelital (Google Maps, Nearmap, EagleView) o foto de dron.</p>'}` : ''}
       ${m.mode === 'sat' ? `<form class="row" data-form="geo"><input id="geoQ" name="q" placeholder="Dirección o lat, lng" value="${esc(j.address || '')}" style="flex:1"><button class="btn sm">Ir</button></form><button class="btn sm" data-act="myLoc" style="align-self:flex-start">Usar mi ubicación (en la obra)</button>
-      <label class="field"><span>Imagen satelital</span><select id="satSrc" data-chg="satSrc">${Object.entries(SAT_SOURCES).map(([k, v]) => `<option value="${k}" ${k === (state.settings.satSource || 'clarity') ? 'selected' : ''}>${v.name}</option>`).join('')}</select></label>
-      <label class="row small" style="gap:6px"><input type="checkbox" id="satEnh" data-chg="satEnh" ${state.settings.satEnhance !== false ? 'checked' : ''}> Realzar contraste y brillo</label>
+      <label class="field"><span>Imagen satelital</span><select id="satSrc" data-chg="satSrc">${Object.entries(SAT_SOURCES).map(([k, v]) => `<option value="${k}" ${k === (state.settings.satSource || 'esri') ? 'selected' : ''}>${v.name}</option>`).join('')}</select></label>
+      <label class="row small" style="gap:6px"><input type="checkbox" id="satEnh" data-chg="satEnh" ${state.settings.satEnhance === true ? 'checked' : ''}> Realzar contraste y brillo</label>
       <p class="small muted">Si una imagen se ve borrosa o vieja, prueba otra fuente.</p>` : ''}
     </div>
     <div class="stack" style="gap:6px"><span class="label">Herramienta</span>
@@ -1677,18 +1677,18 @@ async function geocode(q) {
 }
 function centerOn(ll) {
   const m = meas(); if (!m) return;
-  m.center = ll; m.zoom = 20; if (!m.facets.length && !m.lines.length) m.origin = null; save();
-  if (map && m.mode === 'sat') { map.setView(ll, 20); hud(); }
+  m.center = ll; m.zoom = 19; if (!m.facets.length && !m.lines.length) m.origin = null; save();
+  if (map && m.mode === 'sat') { map.setView(ll, 19); hud(); }
 }
 
 // Fuentes de imagen satelital (sin llave de API)
 const SAT_SOURCES = {
-  clarity: { name: 'Esri Clarity (más nítida)', url: 'https://clarity.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', native: 20, attr: 'Imágenes © Esri, Maxar, Vexcel' },
-  bing: { name: 'Bing', native: 20, attr: 'Imágenes © Microsoft' },
-  esri: { name: 'Esri estándar', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', native: 19, attr: 'Imágenes © Esri, Maxar' },
+  esri: { name: 'Esri (recomendada)', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', native: 19, attr: 'Imágenes © Esri, Maxar' },
+  clarity: { name: 'Esri Clarity', url: 'https://clarity.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', native: 19, attr: 'Imágenes © Esri, Maxar, Vexcel' },
+  bing: { name: 'Bing', native: 19, attr: 'Imágenes © Microsoft' },
 };
 function satLayer(k) {
-  const s = SAT_SOURCES[k] || SAT_SOURCES.clarity;
+  const s = SAT_SOURCES[k] || SAT_SOURCES.esri;
   const opts = { maxZoom: 22, maxNativeZoom: s.native, attribution: s.attr, detectRetina: false };
   if (k === 'bing') {
     const B = L.TileLayer.extend({
