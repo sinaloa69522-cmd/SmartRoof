@@ -853,6 +853,7 @@ td input.pr { max-width: 110px; text-align: right; font-family: var(--f-mono); }
 .mapbox { position: relative; border-radius: var(--r); overflow: hidden; border: 1px solid var(--line); background: var(--surface-2); }
 #map { height: max(440px, calc(100vh - 250px)); width: 100%; background: var(--surface); }
 #map.drawing { cursor: crosshair; }
+#map.enhance .leaflet-tile-pane { filter: contrast(1.18) brightness(1.08) saturate(1.15); }
 #map.drawing .leaflet-interactive { cursor: crosshair; }
 .hud { position: absolute; left: 10px; bottom: 10px; z-index: 500; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; font-family: var(--f-mono); font-size: 12px; pointer-events: none; box-shadow: var(--shadow); }
 .mapnote { position: absolute; inset: 12px 12px auto 60px; z-index: 600; background: var(--surface); border: 1px solid var(--warn); border-radius: 7px; padding: 10px 12px; box-shadow: var(--shadow); font-size: 13px; }
@@ -1482,7 +1483,8 @@ function initMap() {
     const needGeo = !m.center; if (!m.center) m.center = state.settings.homeCenter.slice();
     if (needGeo && getJob(route.id).address) setTimeout(() => geocode(getJob(route.id).address).then(ll => ll && centerOn(ll)), 0);
     map = L.map(el, { doubleClickZoom: false, maxZoom: 22 }).setView(m.center, m.zoom || 19);
-    const tl = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 22, maxNativeZoom: 19, attribution: 'Imágenes © Esri, Maxar' }).addTo(map);
+    const tl = satLayer(state.settings.satSource || 'clarity').addTo(map);
+    el.classList.toggle('enhance', state.settings.satEnhance !== false);
     let good = 0, bad = 0;
     tl.on('tileload', () => { good++; $('#satNote') && ($('#satNote').hidden = true); });
     tl.on('tileerror', () => { if (++bad >= 2 && !good) showSatNote(); });
@@ -1599,7 +1601,10 @@ function updatePanel() {
       ${m.mode === 'grid' ? '<p class="small muted">Cuadrícula en pies. Dibuja con las medidas de la inspección.</p>' : ''}
       ${m.mode === 'image' ? `<label class="btn sm" style="align-self:flex-start">Subir foto aérea o captura<input id="imgFile" type="file" accept="image/*" data-chg="image" hidden></label>
         ${m.image ? (m.ftPerUnit ? `<p class="small muted">Escala: 1 px = ${num(m.ftPerUnit, 3)} ft</p>` : '<p class="small" style="color:var(--warn)">Falta calibrar la escala: usa «Calibrar escala» sobre la barra de escala o una medida conocida.</p>') : '<p class="small muted">Sube una captura satelital (Google Maps, Nearmap, EagleView) o foto de dron.</p>'}` : ''}
-      ${m.mode === 'sat' ? `<form class="row" data-form="geo"><input id="geoQ" name="q" placeholder="Dirección o lat, lng" value="${esc(j.address || '')}" style="flex:1"><button class="btn sm">Ir</button></form><button class="btn sm" data-act="myLoc" style="align-self:flex-start">Usar mi ubicación (en la obra)</button>` : ''}
+      ${m.mode === 'sat' ? `<form class="row" data-form="geo"><input id="geoQ" name="q" placeholder="Dirección o lat, lng" value="${esc(j.address || '')}" style="flex:1"><button class="btn sm">Ir</button></form><button class="btn sm" data-act="myLoc" style="align-self:flex-start">Usar mi ubicación (en la obra)</button>
+      <label class="field"><span>Imagen satelital</span><select id="satSrc" data-chg="satSrc">${Object.entries(SAT_SOURCES).map(([k, v]) => `<option value="${k}" ${k === (state.settings.satSource || 'clarity') ? 'selected' : ''}>${v.name}</option>`).join('')}</select></label>
+      <label class="row small" style="gap:6px"><input type="checkbox" id="satEnh" data-chg="satEnh" ${state.settings.satEnhance !== false ? 'checked' : ''}> Realzar contraste y brillo</label>
+      <p class="small muted">Si una imagen se ve borrosa o vieja, prueba otra fuente.</p>` : ''}
     </div>
     <div class="stack" style="gap:6px"><span class="label">Herramienta</span>
       <div class="tools">${tools.map(([k, n, key]) => `<button class="tool" data-act="tool" data-k="${k}" aria-pressed="${M.tool === k}">${n}<kbd>${key}</kbd></button>`).join('')}</div>
@@ -1674,6 +1679,27 @@ function centerOn(ll) {
   const m = meas(); if (!m) return;
   m.center = ll; m.zoom = 20; if (!m.facets.length && !m.lines.length) m.origin = null; save();
   if (map && m.mode === 'sat') { map.setView(ll, 20); hud(); }
+}
+
+// Fuentes de imagen satelital (sin llave de API)
+const SAT_SOURCES = {
+  clarity: { name: 'Esri Clarity (más nítida)', url: 'https://clarity.maptiles.arcgis.com/arcgis/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', native: 20, attr: 'Imágenes © Esri, Maxar, Vexcel' },
+  bing: { name: 'Bing', native: 20, attr: 'Imágenes © Microsoft' },
+  esri: { name: 'Esri estándar', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', native: 19, attr: 'Imágenes © Esri, Maxar' },
+};
+function satLayer(k) {
+  const s = SAT_SOURCES[k] || SAT_SOURCES.clarity;
+  const opts = { maxZoom: 22, maxNativeZoom: s.native, attribution: s.attr, detectRetina: false };
+  if (k === 'bing') {
+    const B = L.TileLayer.extend({
+      getTileUrl(c) {
+        let q = ''; for (let i = c.z; i > 0; i--) { let d = 0; const m = 1 << (i - 1); if (c.x & m) d++; if (c.y & m) d += 2; q += d; }
+        return `https://ecn.t${(c.x + c.y) % 4}.tiles.virtualearth.net/tiles/a${q}.jpeg?g=14000`;
+      },
+    });
+    return new B('', opts);
+  }
+  return L.tileLayer(s.url, opts);
 }
 
 // ---------- Informe ----------
@@ -2063,6 +2089,8 @@ const CHG = {
   stage: el => { const j = J(); setStage(j, el.value); save(); render(); },
   jobField: el => { const j = J(); j[el.dataset.k] = el.value; save(); if (el.dataset.k === 'name' || el.dataset.k === 'address') render(); },
   image: el => { if (el.files[0]) loadImage(el.files[0]); },
+  satSrc: el => { state.settings.satSource = el.value; save(); initMap(); },
+  satEnh: el => { state.settings.satEnhance = el.checked; save(); $('#map').classList.toggle('enhance', el.checked); },
   facetPitch: el => { const m = meas(); const f = m.facets.find(x => x.id === M.sel?.id); if (f) { pushHist(); f.pitch = +el.value; commit(); } },
   defPitch: el => { meas().defaultPitch = +el.value; save(); },
   pens: el => { meas().penetrations = Math.max(0, +el.value || 0); save(); updatePanel(); },

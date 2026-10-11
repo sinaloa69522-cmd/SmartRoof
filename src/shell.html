@@ -1,0 +1,24 @@
+<title>SmartRoof</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..800&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;600&family=Caveat:wght@600&display=swap">
+<style>
+/*LEAFLET_CSS*/
+/*APP_CSS*/
+@media print { .side, .tabs, .jobhead, main > .row, .pagehead { display: none !important; } .app { display: block; } main { padding: 0; } .doc { border: 0; } }
+</style>
+<div class="app">
+  <nav class="side" aria-label="Principal">
+    <div class="brand"><span style="color:var(--brand-ink)"><svg width="30" height="30" viewBox="0 0 32 32" aria-hidden="true"><path d="M2 18 16 6l14 12" fill="none" stroke="var(--accent)" stroke-width="3.2" stroke-linejoin="round"/><path d="M7 17v10h18V17" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M12 27v-6h8v6" fill="none" stroke="currentColor" stroke-width="2"/></svg></span><div><b id="brandName">SmartRoof</b><small id="brandCo"></small></div></div>
+    <div class="nav" id="nav"></div>
+    <div class="grow"></div>
+    <button class="btn primary cta" data-act="newJob"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>Nuevo trabajo</span></button>
+  </nav>
+  <main id="main"></main>
+</div>
+<div id="modal" hidden></div>
+<div id="toast" hidden role="status"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+/*APP_JS*/
+</script>
