@@ -218,7 +218,7 @@ function lineFrom(c, q) {
 function buildProposal(job, keep) {
   const r = calc(job.measurement); const q = quantities(r, r.wasteUsed ?? 10);
   const options = TIERS.map(t => ({
-    name: t.name, desc: t.desc,
+    name: tr(t.name), desc: tr(t.desc),
     lines: [t.shingle, ...BASE_ITEMS, ...t.extras].map(cat).filter(Boolean).map(c => lineFrom(c, q)).filter(l => l.qty > 0),
   }));
   const p = keep || {};
@@ -260,7 +260,7 @@ function invTotals(inv) {
 function createOrder(job) {
   const p = job.proposal; const i = p.selected ?? Math.min(1, p.options.length - 1);
   job.order = {
-    number: 'P-' + (state.seq.order++), supplier: 'ABC Supply – Austin', delivery: addDays(today(), 5), status: 'Borrador', notes: 'Entregar en la entrada. Llamar 30 min antes.',
+    number: 'P-' + (state.seq.order++), supplier: 'ABC Supply – Austin', delivery: addDays(today(), 5), status: 'Borrador', notes: tr('Entregar en la entrada. Llamar 30 min antes.'),
     items: p.options[i].lines.filter(l => l.kind === 'material').map(l => ({ name: l.name, unit: l.unit, qty: l.qty })),
   };
   log(job, `Pedido de material ${job.order.number} creado`);
@@ -1153,11 +1153,11 @@ const ACT = {
   genProposal: () => { const j = J(); j.proposal = buildProposal(j); optIdx = 1; log(j, 'Propuesta generada'); save(); render(); },
   regenProposal: el => { if (!armed(el)) return; const j = J(); const old = j.proposal; j.proposal = buildProposal(j, old); save(); toast('Cantidades recalculadas'); render(); },
   opt: el => { optIdx = +el.dataset.i; render(); },
-  addOption: () => { const p = J().proposal; const base = p.options[optIdx]; p.options.push({ name: 'Opción ' + (p.options.length + 1), desc: '', lines: JSON.parse(JSON.stringify(base.lines)) }); optIdx = p.options.length - 1; save(); render(); },
+  addOption: () => { const p = J().proposal; const base = p.options[optIdx]; p.options.push({ name: tr('Opción ' + (p.options.length + 1)), desc: '', lines: JSON.parse(JSON.stringify(base.lines)) }); optIdx = p.options.length - 1; save(); render(); },
   delOption: el => { if (!armed(el)) return; const p = J().proposal; p.options.splice(optIdx, 1); optIdx = 0; save(); render(); },
   delLine: el => { const p = J().proposal; p.options[optIdx].lines.splice(+el.dataset.i, 1); save(); render(); },
   addLine: () => { const id = $('#addCat').value; if (!id) return; const j = J(); const r = calc(j.measurement); const q = quantities(r, r.wasteUsed ?? 10); j.proposal.options[optIdx].lines.push(lineFrom(cat(id), q)); save(); render(); },
-  addCustom: () => { J().proposal.options[optIdx].lines.push({ cid: null, name: 'Partida adicional', unit: 'serv', kind: 'other', qty: 1, price: 0, cost: 0 }); save(); render(); },
+  addCustom: () => { J().proposal.options[optIdx].lines.push({ cid: null, name: tr('Partida adicional'), unit: tr('serv'), kind: 'other', qty: 1, price: 0, cost: 0 }); save(); render(); },
   sendProposal: () => { const j = J(); j.proposal.status = 'sent'; j.proposal.sentOn = today(); log(j, 'Propuesta enviada al cliente'); if (OPEN_STAGES.includes(j.stage)) setStage(j, 'propuesta', 'Movido a «Propuesta enviada»'); save(); toast('Propuesta marcada como enviada'); render(); },
   delProposal: el => { if (!armed(el)) return; J().proposal = null; save(); render(); },
   clientView: () => { clientSel = null; go({ view: 'cliente', id: route.id }); },
@@ -1166,7 +1166,7 @@ const ACT = {
   // factura
   createInvoice: () => { const j = J(); createInvoice(j); setStage(j, 'facturado'); save(); render(); },
   delInvoice: el => { if (!armed(el)) return; J().invoice = null; save(); render(); },
-  addInvLine: () => { J().invoice.lines.push({ name: 'Cambio de obra: reemplazo de triplay', unit: 'hoja', qty: 1, price: 95 }); save(); render(); },
+  addInvLine: () => { J().invoice.lines.push({ name: tr('Cambio de obra: reemplazo de triplay'), unit: tr('hoja'), qty: 1, price: 95 }); save(); render(); },
   delInvLine: el => { J().invoice.lines.splice(+el.dataset.i, 1); save(); render(); },
   delPayment: el => { const j = J(); j.invoice.payments = j.invoice.payments.filter(p => p.id !== el.dataset.pid); syncPaid(j); save(); render(); },
   copyInvoice: () => {
@@ -1328,9 +1328,30 @@ ACT.install = async () => {
 };
 if ('serviceWorker' in navigator && window.isSecureContext && location.protocol !== 'file:' && !inFrame) { try { navigator.serviceWorker.register('sw.js').catch(() => { }); } catch { } }
 
+// Cambia al otro idioma los textos de fábrica guardados (productos, unidades, opciones, notas de ejemplo); lo escrito por el usuario no se toca.
+function swapData(l) {
+  const known = new Set(['Partida adicional', 'Cambio de obra: reemplazo de triplay', 'hoja', 'Entregar en la entrada. Llamar 30 min antes.', DEFAULT_SETTINGS.intro, DEFAULT_SETTINGS.terms,
+    'Granizo en abril. Quiere cambiar a teja arquitectónica color carbón.', 'Goteras en el salón social. Inspección programada el jueves 9:00.',
+    ...DEFAULT_CATALOG.flatMap(c => [c.name, c.unit]), ...TIERS.flatMap(t => [t.name, t.desc])]);
+  const back = {}; for (const k of known) if (EN[k]) back[EN[k]] = k;
+  const sw = v => {
+    if (typeof v !== 'string') return v;
+    if (l === 'en') { if (known.has(v) && EN[v]) return EN[v]; const m = v.match(/^Opción (\d+)$/); return m ? 'Option ' + m[1] : v; }
+    if (back[v]) return back[v]; const m = v.match(/^Option (\d+)$/); return m ? 'Opción ' + m[1] : v;
+  };
+  const fix = (o, ks) => { if (o) for (const k of ks) if (k in o) o[k] = sw(o[k]); };
+  state.catalog.forEach(c => fix(c, ['name', 'unit']));
+  for (const j of state.jobs) {
+    fix(j, ['notes']); fix(j.proposal, ['intro', 'terms']);
+    j.proposal?.options?.forEach(o => { fix(o, ['name', 'desc']); o.lines?.forEach(x => fix(x, ['name', 'unit'])); });
+    j.invoice?.lines?.forEach(x => fix(x, ['name', 'unit']));
+    fix(j.order, ['notes']); j.order?.items?.forEach(x => fix(x, ['name', 'unit']));
+  }
+}
 function setLang(l) {
   const st = state.settings;
   for (const k of ['intro', 'terms']) { const es = DEFAULT_SETTINGS[k], en = EN[es]; if (l === 'en' && st[k] === es) st[k] = en; else if (l !== 'en' && st[k] === en) st[k] = es; }
+  swapData(l);
   const wasEn = !!trObs; st.lang = l; save();
   if (wasEn && l !== 'en') { location.reload(); return; } // el texto fijo traducido vuelve al español al recargar
   applyLang(); render(); updLangBtn();
@@ -1341,6 +1362,7 @@ ACT.lang = () => setLang(state.settings.lang === 'en' ? 'es' : 'en');
 // ---------- inicio ----------
 state = load();
 if (!state) { seedState(); save(); }
+if (state.settings.lang === 'en') { swapData('en'); save(); }
 route = parseHash();
 render();
 applyLang();
