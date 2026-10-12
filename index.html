@@ -861,6 +861,7 @@ td input.pr { max-width: 110px; text-align: right; font-family: var(--f-mono); }
 .mapbox { position: relative; border-radius: var(--r); overflow: hidden; border: 1px solid var(--line); background: var(--surface-2); }
 #map { height: max(440px, calc(100vh - 250px)); width: 100%; background: var(--surface); }
 #map.drawing { cursor: crosshair; }
+.sv { width: 100%; height: min(420px, 55vh); border: 0; border-radius: 6px; display: block; background: var(--surface-2); }
 #map.enhance .leaflet-tile-pane { filter: contrast(1.18) brightness(1.08) saturate(1.15); }
 #map.drawing .leaflet-interactive { cursor: crosshair; }
 .hud { position: absolute; left: 10px; bottom: 10px; z-index: 500; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; font-family: var(--f-mono); font-size: 12px; pointer-events: none; box-shadow: var(--shadow); }
@@ -1467,7 +1468,7 @@ const meas = () => getJob(route.id).measurement;
 function tabMeasure(j) {
   if (!j.measurement) { j.measurement = newMeasurement(); if (!inFrame && j.address) j.measurement.mode = 'sat'; save(); }
   M.tool = j.measurement.facets.length ? 'select' : 'facet'; M.draft = []; M.sel = null; M.hist = []; M.calib = null;
-  return `<div class="measure"><div class="mapbox"><div id="map"></div><div class="hud" id="hud">Listo</div><div class="mapnote" id="satNote" hidden></div></div>
+  return `<div class="measure"><div class="stack" style="min-width:0"><div class="mapbox"><div id="map"></div><div class="hud" id="hud">Listo</div><div class="mapnote" id="satNote" hidden></div></div><section class="panel" id="svbox" hidden></section></div>
     <aside class="panel stack" id="mpanel"></aside></div>`;
 }
 function destroyMap() { if (map) { map.remove(); map = null; } }
@@ -1619,6 +1620,7 @@ function updatePanel() {
       <label class="row small" style="gap:6px"><input type="checkbox" id="satEnh" data-chg="satEnh" ${state.settings.satEnhance === true ? 'checked' : ''}> Realzar contraste y brillo</label>
       <p class="small muted">Si una imagen se ve borrosa o vieja, prueba otra fuente.</p>` : ''}
     </div>
+    <button class="btn" data-act="streetView" style="align-self:flex-start">Ver Street View</button>
     <div class="stack" style="gap:6px"><span class="label">Herramienta</span>
       <div class="tools">${tools.map(([k, n, key]) => `<button class="tool" data-act="tool" data-k="${k}" aria-pressed="${M.tool === k}">${n}<kbd>${key}</kbd></button>`).join('')}</div>
       ${M.tool === 'line' ? `<div class="chips">${chips(M.lineType)}</div>` : ''}
@@ -1688,9 +1690,26 @@ async function geocode(q) {
   toast(inFrame ? 'La búsqueda de direcciones no funciona en esta vista previa.' : 'No se pudo buscar la dirección. Revisa tu conexión o escribe lat, lng.');
   hud(); return null;
 }
+async function showStreetView() {
+  const j = J(), m = meas(), box = $('#svbox'); if (!box) return;
+  let ll = m.addrLL || null;
+  if (!ll && j.address) ll = await geocode(j.address);
+  if (!ll && m.mode === 'sat' && map) { const c = map.getCenter(); ll = [c.lat, c.lng]; }
+  if (!ll) { toast('Escribe la dirección del trabajo para ver Street View'); return; }
+  m.addrLL = ll; save(); hud();
+  const key = state.settings.googleKey, at = `${ll[0].toFixed(6)},${ll[1].toFixed(6)}`;
+  const ext = `https://www.google.com/maps/@?api=1&map_action=pano&viewpoint=${at}`;
+  box.hidden = false;
+  box.innerHTML = `<div class="panel-head"><h3>Street View</h3><div class="row"><a class="btn sm" href="${ext}" target="_blank" rel="noopener">Abrir en Google Maps</a><button class="btn sm ghost" data-act="svClose">Cerrar</button></div></div>`
+    + (key && !inFrame
+      ? `<iframe class="sv" src="https://www.google.com/maps/embed/v1/streetview?key=${encodeURIComponent(key)}&location=${at}&fov=80&language=es" allowfullscreen loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Street View de ${esc(j.address || 'la propiedad')}"></iframe>
+         <p class="small muted" style="margin-top:6px">Arrastra para girar la vista. Si aparece un error, activa «Maps Embed API» en tu proyecto de Google Cloud.</p>`
+      : `<p class="muted">${inFrame ? 'Street View no se puede mostrar en esta vista previa.' : 'Para verlo aquí, agrega tu llave de Google en Ajustes.'} Mientras, usa «Abrir en Google Maps».</p>`);
+  box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
 function centerOn(ll) {
   const m = meas(); if (!m) return;
-  m.center = ll; m.zoom = 19; if (!m.facets.length && !m.lines.length) m.origin = null; save();
+  m.center = ll; m.addrLL = ll; m.zoom = 19; if (!m.facets.length && !m.lines.length) m.origin = null; save();
   if (map && m.mode === 'sat') { map.setView(ll, 19); hud(); }
 }
 
@@ -2090,6 +2109,8 @@ const ACT = {
     const h = M.hist.pop(); if (!h) return; const m = meas(); const s = JSON.parse(h); m.facets = s.f; m.lines = s.l; M.sel = null; commit();
   },
   closeFacet: () => closeFacet(),
+  streetView: () => showStreetView(),
+  svClose: () => { const b = $('#svbox'); b.hidden = true; b.innerHTML = ''; },
   myLoc: () => {
     if (!navigator.geolocation) { toast('Este dispositivo no comparte ubicación'); return; }
     hud('Obteniendo tu ubicación…');

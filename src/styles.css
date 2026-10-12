@@ -184,6 +184,7 @@ td input.pr { max-width: 110px; text-align: right; font-family: var(--f-mono); }
 .mapbox { position: relative; border-radius: var(--r); overflow: hidden; border: 1px solid var(--line); background: var(--surface-2); }
 #map { height: max(440px, calc(100vh - 250px)); width: 100%; background: var(--surface); }
 #map.drawing { cursor: crosshair; }
+.sv { width: 100%; height: min(420px, 55vh); border: 0; border-radius: 6px; display: block; background: var(--surface-2); }
 #map.enhance .leaflet-tile-pane { filter: contrast(1.18) brightness(1.08) saturate(1.15); }
 #map.drawing .leaflet-interactive { cursor: crosshair; }
 .hud { position: absolute; left: 10px; bottom: 10px; z-index: 500; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; font-family: var(--f-mono); font-size: 12px; pointer-events: none; box-shadow: var(--shadow); }
