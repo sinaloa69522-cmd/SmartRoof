@@ -289,3 +289,8 @@ td input.pr { max-width: 110px; text-align: right; font-family: var(--f-mono); }
   .side .langsw { padding: 2px; }
   .side .langsw ~ .cta { margin-left: 0; }
 }
+
+.clientmode .side { display: none !important; }
+.clientmode .app { grid-template-columns: minmax(0, 1fr); }
+.clientmode main { max-width: 980px; margin: 0 auto; width: 100%; }
+a.btn { text-decoration: none; }

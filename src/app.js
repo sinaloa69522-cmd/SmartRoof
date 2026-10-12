@@ -113,9 +113,11 @@ const DEFAULT_SETTINGS = {
 // ---------- estado ----------
 const KEY = 'cumbrera-v1';
 let state;
+let clientMode = false, clientReply = null;
 let route = { view: 'panel' };
 
 function save() {
+  if (clientMode) return;
   try { localStorage.setItem(KEY, JSON.stringify(state)); }
   catch (e) { toast('No se pudo guardar en este navegador (espacio lleno o bloqueado)'); }
 }
@@ -877,7 +879,8 @@ function tabProposal(j) {
   <div class="row">${statusPill}<span class="spacer"></span>
     ${!locked ? '<button class="btn" data-act="regenProposal">Recalcular desde medición</button>' : ''}
     <button class="btn" data-act="clientView">Vista del cliente</button>
-    ${p.status === 'draft' ? '<button class="btn primary" data-act="sendProposal">Marcar como enviada</button>' : ''}
+    ${!locked ? '<button class="btn primary" data-act="shareProposal">Enviar al cliente</button>' : ''}
+    ${p.status === 'draft' ? '<button class="btn" data-act="sendProposal">Marcar como enviada</button>' : ''}
     ${locked ? '<button class="btn primary" data-act="tab" data-tab="factura">Ir a factura →</button>' : ''}</div>
   ${locked ? '<p class="small muted">La propuesta está firmada. Para cambiar partidas, hazlo en la factura.</p>' : ''}
   <div class="panel">
@@ -915,7 +918,7 @@ function viewClient() {
   if (!p) { route = { view: 'job', id: j.id, tab: 'propuesta' }; return viewJob(); }
   if (clientSel == null || clientSel >= p.options.length) clientSel = p.selected ?? Math.min(1, p.options.length - 1);
   const signed = p.status === 'signed';
-  return `<div class="row"><button class="btn sm ghost" data-act="tab" data-tab="propuesta" data-id="${j.id}">← Volver al editor</button><span class="small muted">Así verá tu cliente la propuesta. Puede elegir opción y firmar aquí mismo, en tu tableta o teléfono.</span></div>
+  return `${clientMode ? '' : `<div class="row"><button class="btn sm ghost" data-act="tab" data-tab="propuesta" data-id="${j.id}">← Volver al editor</button><span class="small muted">Así verá tu cliente la propuesta. Puede elegir opción y firmar aquí mismo, o envíale el enlace para que lo haga desde su teléfono.</span><span class="spacer"></span><button class="btn sm primary" data-act="shareProposal">Enviar al cliente</button></div>`}
   <article class="doc">${wmark()}
     <div class="doc-head"><div><span class="label">Propuesta de techo</span><h1>${esc(j.name)}</h1><p class="muted">${esc(j.address)}</p></div>
       <div style="text-align:right">${logoImg()}<b>${esc(s.company)}</b><p class="small muted">${esc(s.phone)}<br>${esc(s.email)}<br>${esc(s.license)}</p></div></div>
@@ -934,7 +937,7 @@ function viewClient() {
         <p class="small" style="color:#5a6573">Al firmar, acepto la opción «<b>${esc(p.options[clientSel].name)}</b>» por <b>${money(optTotals(p.options[clientSel], p).total)}</b> y los términos de arriba.</p>
         <canvas class="sigpad" id="sigpad" aria-label="Área de firma"></canvas>
         <div class="row"><input id="signName" name="name" placeholder="Nombre completo" value="${esc(j.name)}" required style="flex:1;min-width:180px;background:#fff;color:#111821;border-color:#c8ced6"><button type="button" class="btn sm" data-act="clearSig">Borrar firma</button><button class="btn primary">Aceptar y firmar</button></div></form>`}
-  </article>`;
+  </article>${clientMode && signed ? replyBox(s) : ''}`;
 }
 let sig = { drawn: false };
 function initSigPad() {
@@ -948,6 +951,106 @@ function initSigPad() {
   c.addEventListener('pointerdown', e => { down = true; last = pos(e); c.setPointerCapture(e.pointerId); });
   c.addEventListener('pointermove', e => { if (!down) return; const p = pos(e); ctx.beginPath(); ctx.moveTo(...last); ctx.lineTo(...p); ctx.stroke(); last = p; sig.drawn = true; });
   const up = () => { down = false; }; c.addEventListener('pointerup', up); c.addEventListener('pointercancel', up);
+}
+
+// ---------- Enviar al cliente por enlace ----------
+// La propuesta viaja comprimida dentro del enlace (#p=…). El cliente elige, firma y devuelve otro enlace (#f=…) que la app del techador importa.
+const APP_URL = 'https://sinaloa69522-cmd.github.io/SmartRoof/';
+const appBase = () => (/^https?:$/.test(location.protocol) && !inFrame) ? location.origin + location.pathname : APP_URL;
+const b64u = u8 => { let b = ''; for (let i = 0; i < u8.length; i += 0x8000) b += String.fromCharCode(...u8.subarray(i, i + 0x8000)); return btoa(b).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''); };
+const unb64u = s => { const b = atob(s.replace(/-/g, '+').replace(/_/g, '/')); const u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; };
+async function pack(obj) {
+  const raw = new TextEncoder().encode(JSON.stringify(obj));
+  if (!window.CompressionStream) return 'j' + b64u(raw);
+  const z = new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new CompressionStream('deflate-raw'))).arrayBuffer());
+  return 'z' + b64u(z);
+}
+async function unpack(s) {
+  const u = unb64u(decodeURIComponent(s).slice(1));
+  const raw = s[0] === 'z' ? new Uint8Array(await new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer()) : u;
+  return JSON.parse(new TextDecoder().decode(raw));
+}
+function shrinkImg(src, maxW, maxH, type) {
+  return new Promise(res => {
+    if (!src) return res(null);
+    const img = new Image(); img.onload = () => {
+      const k = Math.min(1, maxW / img.width, maxH / img.height); const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(img.width * k)); c.height = Math.max(1, Math.round(img.height * k));
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); res(c.toDataURL(type, 0.7));
+    }; img.onerror = () => res(null); img.src = src;
+  });
+}
+const optSum = p => p.options.map(o => Math.round(optTotals(o, p).total * 100) / 100);
+async function proposalLink(j) {
+  const s = state.settings, p = j.proposal;
+  const data = {
+    v: 1, id: j.id, name: j.name, address: j.address,
+    co: { company: s.company, phone: s.phone, email: s.email, license: s.license, currency: s.currency, lang: s.lang || 'es', wmOn: s.wmOn, wmOpacity: s.wmOpacity, logo: await shrinkImg(s.logo, 240, 120, 'image/webp') },
+    m: j.measurement ? { ...j.measurement, image: null } : null,
+    p: { intro: p.intro, terms: p.terms, validUntil: p.validUntil, taxRate: p.taxRate, discount: p.discount, options: p.options.map(o => ({ name: o.name, desc: o.desc, lines: o.lines.map(l => ({ name: l.name, unit: l.unit, qty: l.qty, price: l.price })) })) },
+  };
+  return appBase() + '#p=' + await pack(data);
+}
+async function shareModal(j) {
+  openModal(`<h2>Enviar al cliente</h2><p class="small muted">Generando el enlace…</p>`);
+  let url; try { url = await proposalLink(j); } catch { closeModal(); toast('No se pudo crear el enlace'); return; }
+  const p = j.proposal;
+  if (p.status === 'draft') { p.status = 'sent'; p.sentOn = today(); log(j, 'Propuesta enviada al cliente'); if (OPEN_STAGES.includes(j.stage)) setStage(j, 'propuesta', 'Movido a «Propuesta enviada»'); save(); render(); }
+  const msg = tr(`Hola ${j.name}, aquí está su propuesta de techo de ${state.settings.company}. Puede elegir su opción, aprobar y firmar desde este enlace:`);
+  const subj = tr(`Propuesta de techo de ${state.settings.company}`);
+  openModal(`<h2>Enviar al cliente</h2>
+    <p class="small muted">Tu cliente abre este enlace en su teléfono o computadora, elige su opción, aprueba y firma. Al terminar, le aparece un botón para mandarte su firma de regreso. Cuando abras ese enlace aquí, la propuesta queda firmada sola.</p>
+    <textarea id="shareLink" readonly rows="3" style="font-size:12px;word-break:break-all">${esc(url)}</textarea>
+    <div class="row" style="flex-wrap:wrap">
+      <a class="btn primary" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(msg + ' ' + url)}">WhatsApp</a>
+      <a class="btn" href="sms:${encodeURIComponent((j.phone || '').replace(/[^\d+]/g, ''))}?&body=${encodeURIComponent(msg + ' ' + url)}">Mensaje de texto</a>
+      <a class="btn" href="mailto:${encodeURIComponent(j.email || '')}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(msg + '\n\n' + url)}">Correo</a>
+      <button class="btn" data-act="copyLink">Copiar enlace</button>
+      ${navigator.share ? `<button class="btn" data-act="nativeShare" data-text="${esc(msg)}">Compartir…</button>` : ''}
+      <span class="spacer"></span><button class="btn ghost" data-act="closeModal">Cerrar</button></div>`);
+}
+async function makeReply(j) {
+  const p = j.proposal;
+  try {
+    const img = await shrinkImg(p.signature.img, 420, 140, 'image/png');
+    clientReply = appBase() + '#f=' + await pack({ v: 1, id: j.id, sel: p.selected, opt: p.options[p.selected].name, total: optSum(p)[p.selected], name: p.signature.name, date: p.signature.date, img });
+  } catch { clientReply = null; }
+  render(); $('#replyBox')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+function replyBox(s) {
+  if (!clientReply) return `<div class="banner" style="margin-top:16px"><p><b>¡Gracias!</b> Preparando el envío de su firma…</p></div>`;
+  const msg = tr(`Hola ${s.company}, ya elegí mi opción y firmé la propuesta. Aquí está mi firma:`);
+  return `<div class="banner stack" id="replyBox" style="gap:10px;margin-top:16px;align-items:stretch"><p><b>¡Gracias! Último paso:</b> envíe su firma a ${esc(s.company)} con uno de estos botones.</p>
+    <div class="row" style="flex-wrap:wrap">
+      <a class="btn primary" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(msg + ' ' + clientReply)}">Enviar por WhatsApp</a>
+      <a class="btn" href="mailto:${encodeURIComponent(s.email || '')}?subject=${encodeURIComponent(tr('Propuesta firmada'))}&body=${encodeURIComponent(msg + '\n\n' + clientReply)}">Enviar por correo</a>
+      <a class="btn" href="sms:${encodeURIComponent((s.phone || '').replace(/[^\d+]/g, ''))}?&body=${encodeURIComponent(msg + ' ' + clientReply)}">Mensaje de texto</a>
+      <button class="btn" data-act="copyReply">Copiar enlace</button>
+      ${navigator.share ? `<button class="btn" data-act="nativeShare" data-which="reply" data-text="${esc(msg)}">Compartir…</button>` : ''}</div></div>`;
+}
+async function importReply(code) {
+  history.replaceState(null, '', location.pathname + location.search);
+  let d; try { d = await unpack(code); } catch { toast('El enlace de firma está incompleto o dañado'); return; }
+  const j = getJob(d.id);
+  if (!j || !j.proposal) { toast('No encontré ese trabajo en este dispositivo. Abre el enlace donde hiciste la propuesta.'); go({ view: 'panel' }); return; }
+  const p = j.proposal;
+  if (p.status === 'signed') { toast('Esta propuesta ya estaba firmada'); go({ view: 'job', id: j.id, tab: 'propuesta' }); return; }
+  const sel = Math.min(d.sel ?? 0, p.options.length - 1);
+  p.signature = { name: d.name, date: d.date || today(), img: d.img, remote: true }; p.selected = sel; p.status = 'signed';
+  log(j, `Propuesta firmada por ${d.name} desde su teléfono: opción «${p.options[sel].name}» (${money(optTotals(p.options[sel], p).total)})`);
+  const changed = Math.abs((optSum(p)[sel] || 0) - (d.total || 0)) > 0.01;
+  if (changed) log(j, `Ojo: el cliente firmó un total de ${money(d.total)}; la propuesta cambió después de enviarla`);
+  if (['lead', 'inspeccion', 'propuesta'].includes(j.stage)) setStage(j, 'aprobado');
+  save(); go({ view: 'job', id: j.id, tab: 'propuesta' });
+  toast(changed ? `Firmada por ${d.name}, pero el total cambió desde que la enviaste` : `¡Propuesta firmada por ${d.name}!`);
+}
+async function startClientMode(code) {
+  clientMode = true; document.body.classList.add('clientmode');
+  let d; try { d = await unpack(code); } catch { $('#main').innerHTML = '<div class="panel empty"><b>Este enlace está incompleto.</b><span>Pide a tu contratista que te lo envíe de nuevo.</span></div>'; return; }
+  state = { settings: { ...DEFAULT_SETTINGS, ...d.co }, catalog: [], seq: { order: 1, invoice: 1 }, jobs: [{ id: d.id, name: d.name, address: d.address, stage: 'propuesta', activity: [], measurement: d.m, proposal: { ...d.p, status: 'sent', selected: null, signature: null }, invoice: null, order: null }] };
+  route = { view: 'cliente', id: d.id };
+  document.title = (d.co.company || 'SmartRoof') + ' · ' + (state.settings.lang === 'en' ? 'Proposal' : 'Propuesta');
+  applyLang(); render();
 }
 
 // ---------- Factura ----------
@@ -1160,6 +1263,10 @@ const ACT = {
   addCustom: () => { J().proposal.options[optIdx].lines.push({ cid: null, name: tr('Partida adicional'), unit: tr('serv'), kind: 'other', qty: 1, price: 0, cost: 0 }); save(); render(); },
   sendProposal: () => { const j = J(); j.proposal.status = 'sent'; j.proposal.sentOn = today(); log(j, 'Propuesta enviada al cliente'); if (OPEN_STAGES.includes(j.stage)) setStage(j, 'propuesta', 'Movido a «Propuesta enviada»'); save(); toast('Propuesta marcada como enviada'); render(); },
   delProposal: el => { if (!armed(el)) return; J().proposal = null; save(); render(); },
+  shareProposal: () => shareModal(J()),
+  copyLink: () => copyText($('#shareLink').value, $('#shareLink')),
+  copyReply: () => copyText(clientReply, null),
+  nativeShare: el => { const url = el.dataset.which === 'reply' ? clientReply : $('#shareLink').value; navigator.share?.({ title: 'SmartRoof', text: el.dataset.text, url }).catch(() => { }); },
   clientView: () => { clientSel = null; go({ view: 'cliente', id: route.id }); },
   clientOpt: el => { clientSel = +el.dataset.i; render(); },
   clearSig: () => { const c = $('#sigpad'); if (c) { c.getContext('2d').clearRect(0, 0, c.width, c.height); sig.drawn = false; } },
@@ -1258,6 +1365,7 @@ const FORM = {
     log(j, `Propuesta firmada por ${name}: opción «${p.options[clientSel].name}» (${money(optTotals(p.options[clientSel], p).total)})`);
     if (['lead', 'inspeccion', 'propuesta'].includes(j.stage)) setStage(j, 'aprobado');
     save(); toast('Propuesta firmada'); render();
+    if (clientMode) makeReply(j);
   },
   payment: fd => {
     const j = J(); const amt = r2(+fd.get('amount')); if (!(amt > 0)) return;
@@ -1306,7 +1414,7 @@ document.addEventListener('drop', e => {
   const col = e.target.closest?.('.col'); if (!col) return; e.preventDefault();
   const j = getJob(e.dataTransfer.getData('text/plain')); if (j) { setStage(j, col.dataset.stage); save(); render(); toast(`${j.name} → ${stageName(col.dataset.stage)}`); }
 });
-window.addEventListener('hashchange', () => { const r = parseHash(); if (JSON.stringify(r) !== JSON.stringify(route)) go(r); });
+window.addEventListener('hashchange', () => { if (clientMode) return; if (/^#f=/.test(location.hash)) { importReply(location.hash.slice(3)); return; } const r = parseHash(); if (JSON.stringify(r) !== JSON.stringify(route)) go(r); });
 
 // ---------- instalar como app ----------
 let installEvt = null;
@@ -1361,10 +1469,15 @@ ACT.lang = () => setLang(state.settings.lang === 'en' ? 'es' : 'en');
 
 // ---------- inicio ----------
 state = load();
-if (!state) { seedState(); save(); }
-if (state.settings.lang === 'en') { swapData('en'); save(); }
-route = parseHash();
-render();
-applyLang();
-updLangBtn();
-updInstall();
+if (!state && !/^#p=/.test(location.hash)) { seedState(); save(); }
+const _h = location.hash;
+if (/^#p=/.test(_h)) startClientMode(_h.slice(3));
+else {
+  if (state.settings.lang === 'en') { swapData('en'); save(); }
+  route = parseHash();
+  render();
+  applyLang();
+  updLangBtn();
+  updInstall();
+  if (/^#f=/.test(_h)) importReply(_h.slice(3));
+}

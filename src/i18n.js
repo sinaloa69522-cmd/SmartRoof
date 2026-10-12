@@ -201,3 +201,26 @@ function applyLang() {
     trNode(document.body);
   } else if (!en && trObs) { trObs.disconnect(); trObs = null; }
 }
+
+// Enviar al cliente por enlace
+Object.assign(EN, {
+  'Enviar al cliente': 'Send to customer', 'Generando el enlace…': 'Creating the link…',
+  'Así verá tu cliente la propuesta. Puede elegir opción y firmar aquí mismo, o envíale el enlace para que lo haga desde su teléfono.': 'This is how your customer sees the proposal. They can choose an option and sign right here, or send them the link to do it from their phone.',
+  'Tu cliente abre este enlace en su teléfono o computadora, elige su opción, aprueba y firma. Al terminar, le aparece un botón para mandarte su firma de regreso. Cuando abras ese enlace aquí, la propuesta queda firmada sola.': 'Your customer opens this link on their phone or computer, chooses an option, approves and signs. When they finish, they get a button to send their signature back to you. When you open that link here, the proposal is marked signed automatically.',
+  'Mensaje de texto': 'Text message', 'Correo': 'Email', 'Copiar enlace': 'Copy link', 'Compartir…': 'Share…', 'Cerrar': 'Close',
+  'Enviar por WhatsApp': 'Send via WhatsApp', 'Enviar por correo': 'Send by email', '¡Gracias!': 'Thank you!', '¡Gracias! Último paso:': 'Thank you! Last step:',
+  'Preparando el envío de su firma…': 'Getting your signature ready to send…', 'No se pudo crear el enlace': 'Couldn\'t create the link',
+  'El enlace de firma está incompleto o dañado': 'The signature link is incomplete or damaged', 'Esta propuesta ya estaba firmada': 'This proposal was already signed',
+  'No encontré ese trabajo en este dispositivo. Abre el enlace donde hiciste la propuesta.': 'That job isn\'t on this device. Open the link where you created the proposal.',
+  'Este enlace está incompleto.': 'This link is incomplete.', 'Pide a tu contratista que te lo envíe de nuevo.': 'Ask your contractor to send it again.',
+});
+EN_PATTERNS.unshift(
+  [/^Hola (.+), aquí está su propuesta de techo de (.+)\. Puede elegir su opción, aprobar y firmar desde este enlace:$/, 'Hi $1, here is your roofing proposal from $2. You can choose your option, approve and sign from this link:'],
+  [/^Propuesta de techo de (.+)$/, 'Roofing proposal from $1'],
+  [/^Hola (.+), ya elegí mi opción y firmé la propuesta\. Aquí está mi firma:$/, 'Hi $1, I chose my option and signed the proposal. Here is my signature:'],
+  [/^envíe su firma a (.+) con uno de estos botones\.$/, 'send your signature to $1 with one of these buttons.'],
+  [/^Firmada por (.+), pero el total cambió desde que la enviaste$/, 'Signed by $1, but the total changed since you sent it'],
+  [/^¡Propuesta firmada por (.+)!$/, 'Proposal signed by $1!'],
+  [/^Propuesta firmada por (.+) desde su teléfono: opción «(.+)» \((.+)\)$/, (m, a, b, c) => `Proposal signed by ${a} from their phone: option «${tr(b)}» (${c})`],
+  [/^Ojo: el cliente firmó un total de (.+); la propuesta cambió después de enviarla$/, 'Note: the customer signed a total of $1; the proposal changed after it was sent'],
+);
