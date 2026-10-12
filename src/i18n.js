@@ -224,3 +224,13 @@ EN_PATTERNS.unshift(
   [/^Propuesta firmada por (.+) desde su teléfono: opción «(.+)» \((.+)\)$/, (m, a, b, c) => `Proposal signed by ${a} from their phone: option «${tr(b)}» (${c})`],
   [/^Ojo: el cliente firmó un total de (.+); la propuesta cambió después de enviarla$/, 'Note: the customer signed a total of $1; the proposal changed after it was sent'],
 );
+Object.assign(EN, {
+  'Pegar firma del cliente': 'Paste customer signature', 'Registrar firma': 'Record signature', 'Pega aquí el mensaje o el enlace': 'Paste the message or link here',
+  'Cuando tu cliente firma, te manda un mensaje con un enlace. Mantén el dedo sobre ese mensaje, toca': 'When your customer signs, they send you a message with a link. Press and hold that message, tap',
+  'Copiar': 'Copy', 'y pégalo aquí. Puedes pegar el mensaje completo.': 'and paste it here. You can paste the whole message.',
+  'No encontré un enlace de firma en ese texto': 'I couldn\'t find a signature link in that text', 'Esa firma es de un trabajo que no está en esta app': 'That signature is for a job that isn\'t in this app',
+  'Este enlace trae la firma de': 'This link has the signature of', 'pero el trabajo no está guardado en este navegador.': 'but the job isn\'t saved in this browser.',
+  'Seguramente tus trabajos están en la app SmartRoof instalada. Copia este enlace, abre la app, entra al trabajo, ve a': 'Your jobs are probably in the installed SmartRoof app. Copy this link, open the app, go into the job, open',
+  'y toca': 'and tap', 'Propuesta': 'Proposal',
+});
+EN_PATTERNS.unshift([/^Firma de (.+)$/, 'Signature from $1'], [/^\(opción «(.+)»\), pero el trabajo no está guardado en este navegador\.$/, (m, a) => `(option «${tr(a)}»), but the job isn't saved in this browser.`]);

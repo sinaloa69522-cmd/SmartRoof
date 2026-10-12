@@ -879,6 +879,7 @@ function tabProposal(j) {
   <div class="row">${statusPill}<span class="spacer"></span>
     ${!locked ? '<button class="btn" data-act="regenProposal">Recalcular desde medición</button>' : ''}
     <button class="btn" data-act="clientView">Vista del cliente</button>
+    ${!locked && p.status === 'sent' ? '<button class="btn" data-act="pasteSig">Pegar firma del cliente</button>' : ''}
     ${!locked ? '<button class="btn primary" data-act="shareProposal">Enviar al cliente</button>' : ''}
     ${p.status === 'draft' ? '<button class="btn" data-act="sendProposal">Marcar como enviada</button>' : ''}
     ${locked ? '<button class="btn primary" data-act="tab" data-tab="factura">Ir a factura →</button>' : ''}</div>
@@ -1028,13 +1029,23 @@ function replyBox(s) {
       <button class="btn" data-act="copyReply">Copiar enlace</button>
       ${navigator.share ? `<button class="btn" data-act="nativeShare" data-which="reply" data-text="${esc(msg)}">Compartir…</button>` : ''}</div></div>`;
 }
-async function importReply(code) {
-  history.replaceState(null, '', location.pathname + location.search);
-  let d; try { d = await unpack(code); } catch { toast('El enlace de firma está incompleto o dañado'); return; }
+async function importReply(code, fromPaste) {
+  const full = appBase() + '#f=' + code;
+  if (!fromPaste) history.replaceState(null, '', location.pathname + location.search);
+  let d; try { d = await unpack(code); } catch { toast('El enlace de firma está incompleto o dañado'); return false; }
   const j = getJob(d.id);
-  if (!j || !j.proposal) { toast('No encontré ese trabajo en este dispositivo. Abre el enlace donde hiciste la propuesta.'); go({ view: 'panel' }); return; }
+  if (!j || !j.proposal) {
+    if (fromPaste) { toast('Esa firma es de un trabajo que no está en esta app'); return false; }
+    // Pasa cuando el enlace se abre en el navegador y los trabajos están en la app instalada (en iPhone no comparten datos).
+    openModal(`<h2>Firma de ${esc(d.name)}</h2>
+      <p>Este enlace trae la firma de <b>${esc(d.name)}</b> (opción «${esc(d.opt || '')}»), pero el trabajo no está guardado en este navegador.</p>
+      <p class="small muted">Seguramente tus trabajos están en la app SmartRoof instalada. Copia este enlace, abre la app, entra al trabajo, ve a <b>Propuesta</b> y toca <b>Pegar firma del cliente</b>.</p>
+      <textarea id="shareLink" readonly rows="3" style="font-size:12px;word-break:break-all">${esc(full)}</textarea>
+      <div class="row"><button class="btn primary" data-act="copyLink">Copiar enlace</button><span class="spacer"></span><button class="btn ghost" data-act="closeModal">Cerrar</button></div>`);
+    return false;
+  }
   const p = j.proposal;
-  if (p.status === 'signed') { toast('Esta propuesta ya estaba firmada'); go({ view: 'job', id: j.id, tab: 'propuesta' }); return; }
+  if (p.status === 'signed') { toast('Esta propuesta ya estaba firmada'); go({ view: 'job', id: j.id, tab: 'propuesta' }); return true; }
   const sel = Math.min(d.sel ?? 0, p.options.length - 1);
   p.signature = { name: d.name, date: d.date || today(), img: d.img, remote: true }; p.selected = sel; p.status = 'signed';
   log(j, `Propuesta firmada por ${d.name} desde su teléfono: opción «${p.options[sel].name}» (${money(optTotals(p.options[sel], p).total)})`);
@@ -1043,6 +1054,13 @@ async function importReply(code) {
   if (['lead', 'inspeccion', 'propuesta'].includes(j.stage)) setStage(j, 'aprobado');
   save(); go({ view: 'job', id: j.id, tab: 'propuesta' });
   toast(changed ? `Firmada por ${d.name}, pero el total cambió desde que la enviaste` : `¡Propuesta firmada por ${d.name}!`);
+  return true;
+}
+function pasteSigModal() {
+  openModal(`<h2>Pegar firma del cliente</h2>
+    <p class="small muted">Cuando tu cliente firma, te manda un mensaje con un enlace. Mantén el dedo sobre ese mensaje, toca <b>Copiar</b> y pégalo aquí. Puedes pegar el mensaje completo.</p>
+    <form class="stack" data-form="pasteSig"><textarea name="txt" rows="4" placeholder="Pega aquí el mensaje o el enlace" required></textarea>
+    <div class="row" style="justify-content:flex-end"><button type="button" class="btn ghost" data-act="closeModal">Cancelar</button><button class="btn primary">Registrar firma</button></div></form>`);
 }
 async function startClientMode(code) {
   clientMode = true; document.body.classList.add('clientmode');
@@ -1264,6 +1282,7 @@ const ACT = {
   sendProposal: () => { const j = J(); j.proposal.status = 'sent'; j.proposal.sentOn = today(); log(j, 'Propuesta enviada al cliente'); if (OPEN_STAGES.includes(j.stage)) setStage(j, 'propuesta', 'Movido a «Propuesta enviada»'); save(); toast('Propuesta marcada como enviada'); render(); },
   delProposal: el => { if (!armed(el)) return; J().proposal = null; save(); render(); },
   shareProposal: () => shareModal(J()),
+  pasteSig: () => pasteSigModal(),
   copyLink: () => copyText($('#shareLink').value, $('#shareLink')),
   copyReply: () => copyText(clientReply, null),
   nativeShare: el => { const url = el.dataset.which === 'reply' ? clientReply : $('#shareLink').value; navigator.share?.({ title: 'SmartRoof', text: el.dataset.text, url }).catch(() => { }); },
@@ -1357,6 +1376,11 @@ const FORM = {
     else ll = await geocode(q);
     if (ll) centerOn(ll);
   },
+  pasteSig: async fd => {
+    const m = String(fd.get('txt') || '').replace(/\s+/g, '').match(/#f=([A-Za-z0-9_\-%]+)/);
+    if (!m) { toast('No encontré un enlace de firma en ese texto'); return; }
+    closeModal(); await importReply(m[1], true);
+  },
   sign: fd => {
     const j = J(), p = j.proposal; const name = (fd.get('name') || '').trim();
     if (!name) { toast('Escribe tu nombre para firmar'); return; }
@@ -1414,7 +1438,7 @@ document.addEventListener('drop', e => {
   const col = e.target.closest?.('.col'); if (!col) return; e.preventDefault();
   const j = getJob(e.dataTransfer.getData('text/plain')); if (j) { setStage(j, col.dataset.stage); save(); render(); toast(`${j.name} → ${stageName(col.dataset.stage)}`); }
 });
-window.addEventListener('hashchange', () => { if (clientMode) return; if (/^#f=/.test(location.hash)) { importReply(location.hash.slice(3)); return; } const r = parseHash(); if (JSON.stringify(r) !== JSON.stringify(route)) go(r); });
+window.addEventListener('hashchange', () => { if (clientMode) return; if (/^#f=/.test(location.hash)) { importReply(location.hash.slice(3).match(/^[A-Za-z0-9_\-%]+/)?.[0] || ''); return; } const r = parseHash(); if (JSON.stringify(r) !== JSON.stringify(route)) go(r); });
 
 // ---------- instalar como app ----------
 let installEvt = null;
@@ -1479,5 +1503,5 @@ else {
   applyLang();
   updLangBtn();
   updInstall();
-  if (/^#f=/.test(_h)) importReply(_h.slice(3));
+  if (/^#f=/.test(_h)) importReply(_h.slice(3).match(/^[A-Za-z0-9_\-%]+/)?.[0] || '');
 }
