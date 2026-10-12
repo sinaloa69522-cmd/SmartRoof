@@ -946,11 +946,12 @@ function initSigPad() {
   const ratio = window.devicePixelRatio || 1; const rect = c.getBoundingClientRect();
   c.width = rect.width * ratio; c.height = rect.height * ratio;
   const ctx = c.getContext('2d'); ctx.scale(ratio, ratio); ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111821';
-  sig = { drawn: false, c };
+  sig = { drawn: false, c, strokes: [], w: Math.round(rect.width), h: Math.round(rect.height) };
   let down = false, last = null;
   const pos = e => { const b = c.getBoundingClientRect(); return [e.clientX - b.left, e.clientY - b.top]; };
-  c.addEventListener('pointerdown', e => { down = true; last = pos(e); c.setPointerCapture(e.pointerId); });
-  c.addEventListener('pointermove', e => { if (!down) return; const p = pos(e); ctx.beginPath(); ctx.moveTo(...last); ctx.lineTo(...p); ctx.stroke(); last = p; sig.drawn = true; });
+  const rec = p => { const st = sig.strokes[sig.strokes.length - 1], q = [Math.round(p[0]), Math.round(p[1])], l = st[st.length - 1]; if (!l || Math.abs(q[0] - l[0]) + Math.abs(q[1] - l[1]) >= 2) st.push(q); };
+  c.addEventListener('pointerdown', e => { down = true; last = pos(e); sig.strokes.push([]); rec(last); c.setPointerCapture(e.pointerId); });
+  c.addEventListener('pointermove', e => { if (!down) return; const p = pos(e); ctx.beginPath(); ctx.moveTo(...last); ctx.lineTo(...p); ctx.stroke(); last = p; rec(p); sig.drawn = true; });
   const up = () => { down = false; }; c.addEventListener('pointerup', up); c.addEventListener('pointercancel', up);
 }
 
@@ -1013,8 +1014,9 @@ async function shareModal(j) {
 async function makeReply(j) {
   const p = j.proposal;
   try {
-    const img = await shrinkImg(p.signature.img, 420, 140, 'image/png');
-    clientReply = appBase() + '#f=' + await pack({ v: 1, id: j.id, sel: p.selected, opt: p.options[p.selected].name, total: optSum(p)[p.selected], name: p.signature.name, date: p.signature.date, img });
+    // La firma viaja como trazos (números cortos), no como imagen, para que el enlace quepa en un correo o mensaje.
+    const S = p.sigStrokes, st = S ? S.s.filter(x => x.length).map(x => x.map((q, i) => i ? [q[0] - x[i - 1][0], q[1] - x[i - 1][1]] : q).flat().join(',')).join(';') : null;
+    clientReply = appBase() + '#f=' + await pack({ v: 2, id: j.id, sel: p.selected, opt: p.options[p.selected].name, total: optSum(p)[p.selected], name: p.signature.name, date: p.signature.date, wh: S ? [S.w, S.h] : null, st });
   } catch { clientReply = null; }
   render(); $('#replyBox')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
@@ -1028,6 +1030,18 @@ function replyBox(s) {
       <a class="btn" href="sms:${encodeURIComponent((s.phone || '').replace(/[^\d+]/g, ''))}?&body=${encodeURIComponent(msg + ' ' + clientReply)}">Mensaje de texto</a>
       <button class="btn" data-act="copyReply">Copiar enlace</button>
       ${navigator.share ? `<button class="btn" data-act="nativeShare" data-which="reply" data-text="${esc(msg)}">Compartir…</button>` : ''}</div></div>`;
+}
+function strokesToImg(st, wh) {
+  if (!st || !wh) return null;
+  const c = document.createElement('canvas'); c.width = wh[0] * 2; c.height = wh[1] * 2;
+  const ctx = c.getContext('2d'); ctx.scale(2, 2); ctx.lineWidth = 2.2; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; ctx.strokeStyle = '#111821';
+  for (const part of st.split(';')) {
+    const n = part.split(',').map(Number); let x = n[0], y = n[1]; ctx.beginPath(); ctx.moveTo(x, y);
+    if (n.length === 2) ctx.lineTo(x + 0.1, y);
+    for (let i = 2; i + 1 < n.length; i += 2) { x += n[i]; y += n[i + 1]; ctx.lineTo(x, y); }
+    ctx.stroke();
+  }
+  return c.toDataURL('image/png');
 }
 async function importReply(code, fromPaste) {
   const full = appBase() + '#f=' + code;
@@ -1044,10 +1058,11 @@ async function importReply(code, fromPaste) {
       <div class="row"><button class="btn primary" data-act="copyLink">Copiar enlace</button><span class="spacer"></span><button class="btn ghost" data-act="closeModal">Cerrar</button></div>`);
     return false;
   }
+  closeModal();
   const p = j.proposal;
   if (p.status === 'signed') { toast('Esta propuesta ya estaba firmada'); go({ view: 'job', id: j.id, tab: 'propuesta' }); return true; }
   const sel = Math.min(d.sel ?? 0, p.options.length - 1);
-  p.signature = { name: d.name, date: d.date || today(), img: d.img, remote: true }; p.selected = sel; p.status = 'signed';
+  p.signature = { name: d.name, date: d.date || today(), img: d.img || strokesToImg(d.st, d.wh), remote: true }; p.selected = sel; p.status = 'signed';
   log(j, `Propuesta firmada por ${d.name} desde su teléfono: opción «${p.options[sel].name}» (${money(optTotals(p.options[sel], p).total)})`);
   const changed = Math.abs((optSum(p)[sel] || 0) - (d.total || 0)) > 0.01;
   if (changed) log(j, `Ojo: el cliente firmó un total de ${money(d.total)}; la propuesta cambió después de enviarla`);
@@ -1288,7 +1303,7 @@ const ACT = {
   nativeShare: el => { const url = el.dataset.which === 'reply' ? clientReply : $('#shareLink').value; navigator.share?.({ title: 'SmartRoof', text: el.dataset.text, url }).catch(() => { }); },
   clientView: () => { clientSel = null; go({ view: 'cliente', id: route.id }); },
   clientOpt: el => { clientSel = +el.dataset.i; render(); },
-  clearSig: () => { const c = $('#sigpad'); if (c) { c.getContext('2d').clearRect(0, 0, c.width, c.height); sig.drawn = false; } },
+  clearSig: () => { const c = $('#sigpad'); if (c) { c.getContext('2d').clearRect(0, 0, c.width, c.height); sig.drawn = false; sig.strokes = []; } },
   // factura
   createInvoice: () => { const j = J(); createInvoice(j); setStage(j, 'facturado'); save(); render(); },
   delInvoice: el => { if (!armed(el)) return; J().invoice = null; save(); render(); },
@@ -1385,7 +1400,7 @@ const FORM = {
     const j = J(), p = j.proposal; const name = (fd.get('name') || '').trim();
     if (!name) { toast('Escribe tu nombre para firmar'); return; }
     if (!sig.drawn) { toast('Dibuja tu firma en el recuadro'); return; }
-    p.signature = { name, date: today(), img: sig.c.toDataURL('image/png') }; p.selected = clientSel; p.status = 'signed';
+    p.signature = { name, date: today(), img: sig.c.toDataURL('image/png') }; p.sigStrokes = { w: sig.w, h: sig.h, s: sig.strokes }; p.selected = clientSel; p.status = 'signed';
     log(j, `Propuesta firmada por ${name}: opción «${p.options[clientSel].name}» (${money(optTotals(p.options[clientSel], p).total)})`);
     if (['lead', 'inspeccion', 'propuesta'].includes(j.stage)) setStage(j, 'aprobado');
     save(); toast('Propuesta firmada'); render();
