@@ -242,3 +242,4 @@ Object.assign(EN, {
   '✓ Conexión lista. Las firmas llegarán solas.': '✓ Connected. Signatures will arrive automatically.', 'No se pudo conectar con Firebase. Revisa la dirección.': 'Couldn\'t connect to Firebase. Check the address.',
 });
 EN_PATTERNS.unshift([/^✓ ¡Listo! Su firma fue enviada a (.+)\.$/, '✓ Done! Your signature was sent to $1.'], [/^Firebase respondió con error (\d+)\. Revisa las reglas\.$/, 'Firebase returned error $1. Check the rules.']);
+Object.assign(EN, { 'Versión de SmartRoof:': 'SmartRoof version:' });
