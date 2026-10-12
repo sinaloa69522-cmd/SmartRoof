@@ -251,3 +251,5 @@ Object.assign(EN, {
   'Se van a copiar los datos de': 'This will copy the settings of', ': logo, llave de Google y firmas automáticas. Tus trabajos de este aparato no se tocan.': ': logo, Google key and automatic signatures. Your jobs on this device are not touched.',
 });
 EN_PATTERNS.unshift([/^⚠ Esta llave no se ve completa: tiene (\d+) caracteres y una llave de Google tiene 39 y empieza con «AIza»\. Usa «Pasar ajustes a otro aparato» desde el equipo donde sí funciona\.$/, '⚠ This key looks incomplete: it has $1 characters, and a Google key has 39 and starts with «AIza». Use «Copy settings to another device» from the device where it works.']);
+Object.assign(EN, { 'Pegar ajustes': 'Paste settings', 'Continuar': 'Continue', 'No encontré un enlace de ajustes en ese texto': 'I couldn\'t find a settings link in that text',
+  'Pega aquí el enlace que te mandaste desde «Pasar ajustes a otro aparato». Puedes pegar el mensaje completo.': 'Paste the link you sent yourself from «Copy settings to another device». You can paste the whole message.' });

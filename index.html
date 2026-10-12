@@ -1242,6 +1242,8 @@ Object.assign(EN, {
   'Se van a copiar los datos de': 'This will copy the settings of', ': logo, llave de Google y firmas automáticas. Tus trabajos de este aparato no se tocan.': ': logo, Google key and automatic signatures. Your jobs on this device are not touched.',
 });
 EN_PATTERNS.unshift([/^⚠ Esta llave no se ve completa: tiene (\d+) caracteres y una llave de Google tiene 39 y empieza con «AIza»\. Usa «Pasar ajustes a otro aparato» desde el equipo donde sí funciona\.$/, '⚠ This key looks incomplete: it has $1 characters, and a Google key has 39 and starts with «AIza». Use «Copy settings to another device» from the device where it works.']);
+Object.assign(EN, { 'Pegar ajustes': 'Paste settings', 'Continuar': 'Continue', 'No encontré un enlace de ajustes en ese texto': 'I couldn\'t find a settings link in that text',
+  'Pega aquí el enlace que te mandaste desde «Pasar ajustes a otro aparato». Puedes pegar el mensaje completo.': 'Paste the link you sent yourself from «Copy settings to another device». You can paste the whole message.' });
 
 /* SmartRoof: software para contratistas de techos (medición, propuestas, CRM, facturas). */
 'use strict';
@@ -1355,7 +1357,7 @@ const DEFAULT_SETTINGS = {
   est: { tab: [380, 460], arch: [470, 620], prem: [720, 960], metal: [950, 1350] },
 };
 
-const APP_VER = '9';
+const APP_VER = '10';
 // ---------- estado ----------
 const KEY = 'cumbrera-v1';
 let state;
@@ -2535,7 +2537,7 @@ function viewSettings() {
       <label class="field"><span>Centro del mapa satelital (lat, lng)</span><input id="sHome" data-chg="setHome" value="${s.homeCenter.join(', ')}"></label>
     </div>
     <div class="stack">
-      <div class="panel stack"><h3>Respaldo</h3><p class="small muted">Versión de SmartRoof: <b>${APP_VER}</b></p><button class="btn sm" data-act="shareSettings" style="align-self:flex-start">Pasar ajustes a otro aparato</button><p class="small muted">Los datos se guardan en este navegador. Copia un respaldo para pasarlos a otro equipo.</p>
+      <div class="panel stack"><h3>Respaldo</h3><p class="small muted">Versión de SmartRoof: <b>${APP_VER}</b></p><div class="row"><button class="btn sm" data-act="shareSettings">Pasar ajustes a otro aparato</button><button class="btn sm" data-act="pasteSettings">Pegar ajustes</button></div><p class="small muted">Los datos se guardan en este navegador. Copia un respaldo para pasarlos a otro equipo.</p>
         <div class="row"><button class="btn" data-act="backup">Copiar respaldo</button><button class="btn" data-act="showImport">Importar respaldo</button></div>
         <textarea id="copyFallback" hidden readonly style="min-height:100px"></textarea>
         <form class="stack" data-form="import" id="importForm" hidden><textarea id="importText" name="t" placeholder="Pega aquí el respaldo"></textarea><button class="btn primary">Importar y reemplazar datos</button></form>
@@ -2618,6 +2620,9 @@ const ACT = {
   pasteSig: () => pasteSigModal(),
   testSync: () => testSync(),
   shareSettings: () => shareSettingsModal(),
+  pasteSettings: () => openModal(`<h2>Pegar ajustes</h2><p class="small muted">Pega aquí el enlace que te mandaste desde «Pasar ajustes a otro aparato». Puedes pegar el mensaje completo.</p>
+    <form class="stack" data-form="pasteSettings"><textarea name="txt" rows="4" placeholder="Pega aquí el mensaje o el enlace" required></textarea>
+    <div class="row" style="justify-content:flex-end"><button type="button" class="btn ghost" data-act="closeModal">Cancelar</button><button class="btn primary">Continuar</button></div></form>`),
   applySettings: () => { const d = pendingSettings; if (!d) return; Object.assign(state.settings, d); if (d.googleKey) state.settings.satSource = 'google'; pendingSettings = null; save(); closeModal(); applyLang(); render(); updLangBtn(); pollSigs(); toast('Ajustes copiados a este aparato'); },
   copyLink: () => copyText($('#shareLink').value, $('#shareLink')),
   copyReply: () => copyText(clientReply, null),
@@ -2719,6 +2724,11 @@ const FORM = {
     if (mm) ll = [+mm[1], +mm[2]];
     else ll = await geocode(q);
     if (ll) centerOn(ll);
+  },
+  pasteSettings: fd => {
+    const m = String(fd.get('txt') || '').replace(/\s+/g, '').match(/#s=([A-Za-z0-9_\-%]+)/);
+    if (!m) { toast('No encontré un enlace de ajustes en ese texto'); return; }
+    importSettings(m[1]);
   },
   pasteSig: async fd => {
     const m = String(fd.get('txt') || '').replace(/\s+/g, '').match(/#f=([A-Za-z0-9_\-%]+)/);
