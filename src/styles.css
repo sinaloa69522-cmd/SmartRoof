@@ -278,3 +278,14 @@ td input.pr { max-width: 110px; text-align: right; font-family: var(--f-mono); }
   .bar { grid-template-columns: 96px minmax(0, 1fr) 80px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+.side .langsw{align-self:flex-start;gap:0;padding:3px;font-size:12px;font-weight:700;margin-bottom:8px}
+.side .langsw span{padding:3px 9px;border-radius:5px;color:var(--muted)}
+.side .langsw span.on{background:var(--accent);color:#fff}
+@media (max-width: 760px) {
+  .side .langsw { margin: 0 0 0 auto; align-self: center; flex: none; }
+  .side .langsw span:not(.on) { display: none; }
+  .side .langsw span { padding: 3px 6px; }
+  .side .langsw { padding: 2px; }
+  .side .langsw ~ .cta { margin-left: 0; }
+}

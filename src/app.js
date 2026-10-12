@@ -7,10 +7,11 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const uid = () => Math.random().toString(36).slice(2, 10);
 const today = () => new Date().toISOString().slice(0, 10);
 const addDays = (d, n) => { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
-const fmtDate = d => d ? new Date(d.length === 10 ? d + 'T12:00:00' : d).toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' }) : '';
-const num = (n, d = 0) => new Intl.NumberFormat('es-MX', { maximumFractionDigits: d, minimumFractionDigits: d }).format(n || 0);
+const loc = () => state?.settings?.lang === 'en' ? 'en-US' : 'es-MX';
+const fmtDate = d => d ? new Date(d.length === 10 ? d + 'T12:00:00' : d).toLocaleDateString(loc(), { day: 'numeric', month: 'short', year: 'numeric' }) : '';
+const num = (n, d = 0) => new Intl.NumberFormat(loc(), { maximumFractionDigits: d, minimumFractionDigits: d }).format(n || 0);
 function money(n) {
-  try { return new Intl.NumberFormat('es-MX', { style: 'currency', currency: state.settings.currency || 'USD', currencyDisplay: 'narrowSymbol' }).format(n || 0); }
+  try { return new Intl.NumberFormat(loc(), { style: 'currency', currency: state.settings.currency || 'USD', currencyDisplay: 'narrowSymbol' }).format(n || 0); }
   catch { return '$' + (n || 0).toFixed(2); }
 }
 const r2 = n => Math.round(n * 100) / 100;
@@ -728,7 +729,7 @@ async function showStreetView() {
   box.hidden = false;
   box.innerHTML = `<div class="panel-head"><h3>Street View</h3><div class="row"><a class="btn sm" href="${ext}" target="_blank" rel="noopener">Abrir en Google Maps</a><button class="btn sm ghost" data-act="svClose">Cerrar</button></div></div>`
     + (key && !inFrame
-      ? `<iframe class="sv" src="https://www.google.com/maps/embed/v1/streetview?key=${encodeURIComponent(key)}&location=${at}&fov=80&language=es" allowfullscreen loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Street View de ${esc(j.address || 'la propiedad')}"></iframe>
+      ? `<iframe class="sv" src="https://www.google.com/maps/embed/v1/streetview?key=${encodeURIComponent(key)}&location=${at}&fov=80&language=${state.settings.lang === 'en' ? 'en' : 'es'}" allowfullscreen loading="lazy" referrerpolicy="no-referrer-when-downgrade" title="Street View de ${esc(j.address || 'la propiedad')}"></iframe>
          <p class="small muted" style="margin-top:6px">Arrastra para girar la vista. Si aparece un error, activa «Maps Embed API» en tu proyecto de Google Cloud.</p>`
       : `<p class="muted">${inFrame ? 'Street View no se puede mostrar en esta vista previa.' : 'Para verlo aquí, agrega tu llave de Google en Ajustes.'} Mientras, usa «Abrir en Google Maps».</p>`);
   box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -779,7 +780,7 @@ let gSess = null;
 function googleSession() {
   const key = state.settings.googleKey;
   if (gSess && gSess.key === key && gSess.exp > Date.now()) return gSess.p;
-  const p = fetch('https://tile.googleapis.com/v1/createSession?key=' + encodeURIComponent(key), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mapType: 'satellite', language: 'es-MX', region: 'MX', scale: 'scaleFactor2x', highDpi: true }) })
+  const p = fetch('https://tile.googleapis.com/v1/createSession?key=' + encodeURIComponent(key), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mapType: 'satellite', language: loc(), region: 'MX', scale: 'scaleFactor2x', highDpi: true }) })
     .then(r => r.json()).then(d => { if (!d.session) { toast('Google rechazó la llave: ' + (d.error?.message || 'revisa que «Map Tiles API» esté activada')); throw new Error('no session'); } return d.session; });
   gSess = { key, p, exp: Date.now() + 12 * 3600e3 }; p.catch(() => { gSess = null; });
   return p;
@@ -1064,6 +1065,7 @@ function viewSettings() {
       <label class="field"><span>Licencia</span><input id="sLic" data-chg="set" data-k="license" value="${esc(s.license)}"></label>
       <label class="field"><span>Teléfono</span><input id="sPh" data-chg="set" data-k="phone" value="${esc(s.phone)}"></label>
       <label class="field"><span>Correo</span><input id="sEm" data-chg="set" data-k="email" value="${esc(s.email)}"></label>
+      <label class="field"><span>Idioma / Language</span><select id="sLang" data-chg="lang"><option value="es" ${s.lang !== 'en' ? 'selected' : ''}>Español</option><option value="en" ${s.lang === 'en' ? 'selected' : ''}>English</option></select></label>
       <label class="field"><span>Moneda</span><select id="sCur" data-chg="set" data-k="currency">${['USD', 'MXN', 'EUR', 'COP', 'CAD'].map(c => `<option ${c === s.currency ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
       <label class="field"><span>Impuesto por defecto %</span><input id="sTax" type="number" step="0.01" data-chg="set" data-k="taxRate" value="${s.taxRate}"></label></div>
       <label class="field"><span>Mensaje de propuesta por defecto</span><textarea id="sIntro" data-chg="set" data-k="intro">${esc(s.intro)}</textarea></label>
@@ -1199,6 +1201,7 @@ function syncPaid(j) {
 }
 
 const CHG = {
+  lang: el => setLang(el.value),
   stage: el => { const j = J(); setStage(j, el.value); save(); render(); },
   jobField: el => { const j = J(); j[el.dataset.k] = el.value; save(); if (el.dataset.k === 'name' || el.dataset.k === 'address') render(); },
   image: el => { if (el.files[0]) loadImage(el.files[0]); },
@@ -1325,9 +1328,21 @@ ACT.install = async () => {
 };
 if ('serviceWorker' in navigator && window.isSecureContext && location.protocol !== 'file:' && !inFrame) { try { navigator.serviceWorker.register('sw.js').catch(() => { }); } catch { } }
 
+function setLang(l) {
+  const st = state.settings;
+  for (const k of ['intro', 'terms']) { const es = DEFAULT_SETTINGS[k], en = EN[es]; if (l === 'en' && st[k] === es) st[k] = en; else if (l !== 'en' && st[k] === en) st[k] = es; }
+  const wasEn = !!trObs; st.lang = l; save();
+  if (wasEn && l !== 'en') { location.reload(); return; } // el texto fijo traducido vuelve al español al recargar
+  applyLang(); render(); updLangBtn();
+}
+function updLangBtn() { const b = document.getElementById('langBtn'); if (b) b.querySelectorAll('[data-l]').forEach(x => x.classList.toggle('on', x.dataset.l === (state.settings.lang === 'en' ? 'en' : 'es'))); }
+ACT.lang = () => setLang(state.settings.lang === 'en' ? 'es' : 'en');
+
 // ---------- inicio ----------
 state = load();
 if (!state) { seedState(); save(); }
 route = parseHash();
 render();
+applyLang();
+updLangBtn();
 updInstall();
