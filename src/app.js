@@ -991,6 +991,8 @@ async function proposalLink(j) {
     m: j.measurement ? { ...j.measurement, image: null } : null,
     p: { intro: p.intro, terms: p.terms, validUntil: p.validUntil, taxRate: p.taxRate, discount: p.discount, options: p.options.map(o => ({ name: o.name, desc: o.desc, lines: o.lines.map(l => ({ name: l.name, unit: l.unit, qty: l.qty, price: l.price })) })) },
   };
+  const base = syncBase(s.syncUrl);
+  if (base) { if (!p.token) { p.token = newToken(); save(); } data.cb = base; data.tk = p.token; }
   return appBase() + '#p=' + await pack(data);
 }
 async function shareModal(j) {
@@ -1011,16 +1013,48 @@ async function shareModal(j) {
       ${navigator.share ? `<button class="btn" data-act="nativeShare" data-text="${esc(msg)}">Compartir…</button>` : ''}
       <span class="spacer"></span><button class="btn ghost" data-act="closeModal">Cerrar</button></div>`);
 }
-async function makeReply(j) {
-  const p = j.proposal;
+// La firma viaja como trazos (números cortos), no como imagen, para que quepa en un enlace o correo.
+function sigPayload(j) {
+  const p = j.proposal, S = p.sigStrokes;
+  const st = S ? S.s.filter(x => x.length).map(x => x.map((q, i) => i ? [q[0] - x[i - 1][0], q[1] - x[i - 1][1]] : q).flat().join(',')).join(';') : null;
+  return { v: 2, id: j.id, sel: p.selected, opt: p.options[p.selected].name, total: optSum(p)[p.selected], name: p.signature.name, date: p.signature.date, wh: S ? [S.w, S.h] : null, st };
+}
+// ---------- Firmas automáticas (Firebase Realtime Database, gratis) ----------
+let clientSync = null;
+const syncBase = u => { u = String(u || '').trim().replace(/\/+$/, ''); return /^https:\/\/[a-z0-9.-]+\.(firebaseio\.com|firebasedatabase\.app)$/i.test(u) ? u : ''; };
+const newToken = () => Array.from(crypto.getRandomValues(new Uint8Array(12)), b => b.toString(36).padStart(2, '0')).join('');
+async function pushSig(j) {
+  const r = await fetch(`${clientSync.cb}/firmas/${clientSync.tk}.json`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...sigPayload(j), at: new Date().toISOString() }) });
+  if (!r.ok) throw new Error('sync ' + r.status);
+}
+let polling = false;
+async function pollSigs() {
+  const base = syncBase(state?.settings?.syncUrl); if (!base || polling || clientMode) return;
+  polling = true;
   try {
-    // La firma viaja como trazos (números cortos), no como imagen, para que el enlace quepa en un correo o mensaje.
-    const S = p.sigStrokes, st = S ? S.s.filter(x => x.length).map(x => x.map((q, i) => i ? [q[0] - x[i - 1][0], q[1] - x[i - 1][1]] : q).flat().join(',')).join(';') : null;
-    clientReply = appBase() + '#f=' + await pack({ v: 2, id: j.id, sel: p.selected, opt: p.options[p.selected].name, total: optSum(p)[p.selected], name: p.signature.name, date: p.signature.date, wh: S ? [S.w, S.h] : null, st });
-  } catch { clientReply = null; }
+    for (const j of state.jobs.filter(j => j.proposal?.status === 'sent' && j.proposal.token)) {
+      try {
+        const r = await fetch(`${base}/firmas/${j.proposal.token}.json`, { cache: 'no-store' }); if (!r.ok) continue;
+        const d = await r.json(); if (d && d.name) await applySig({ ...d, id: j.id }, { auto: true });
+      } catch { }
+    }
+  } finally { polling = false; }
+}
+async function testSync() {
+  const base = syncBase($('#sSync')?.value || state.settings.syncUrl);
+  if (!base) { toast('Esa dirección no parece de Firebase. Debe terminar en firebaseio.com o firebasedatabase.app'); return; }
+  try { const r = await fetch(`${base}/firmas/prueba.json`, { cache: 'no-store' }); toast(r.ok ? '✓ Conexión lista. Las firmas llegarán solas.' : 'Firebase respondió con error ' + r.status + '. Revisa las reglas.'); }
+  catch { toast('No se pudo conectar con Firebase. Revisa la dirección.'); }
+}
+async function makeReply(j) {
+  if (clientSync) {
+    try { await pushSig(j); clientReply = 'sent'; render(); $('#replyBox')?.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; } catch { }
+  }
+  try { clientReply = appBase() + '#f=' + await pack(sigPayload(j)); } catch { clientReply = null; }
   render(); $('#replyBox')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 function replyBox(s) {
+  if (clientReply === 'sent') return `<div class="banner stack" id="replyBox" style="gap:6px;margin-top:16px;align-items:stretch"><p><b>✓ ¡Listo! Su firma fue enviada a ${esc(s.company)}.</b></p><p class="small">No tiene que hacer nada más. Puede cerrar esta página.</p></div>`;
   if (!clientReply) return `<div class="banner" style="margin-top:16px"><p><b>¡Gracias!</b> Preparando el envío de su firma…</p></div>`;
   const msg = tr(`Hola ${s.company}, ya elegí mi opción y firmé la propuesta. Aquí está mi firma:`);
   return `<div class="banner stack" id="replyBox" style="gap:10px;margin-top:16px;align-items:stretch"><p><b>¡Gracias! Último paso:</b> envíe su firma a ${esc(s.company)} con uno de estos botones.</p>
@@ -1059,7 +1093,12 @@ async function importReply(code, fromPaste) {
     return false;
   }
   closeModal();
+  return applySig(d, {});
+}
+async function applySig(d, { auto }) {
+  const j = getJob(d.id); if (!j?.proposal) return false;
   const p = j.proposal;
+  if (auto && p.status === 'signed') return false;
   if (p.status === 'signed') { toast('Esta propuesta ya estaba firmada'); go({ view: 'job', id: j.id, tab: 'propuesta' }); return true; }
   const sel = Math.min(d.sel ?? 0, p.options.length - 1);
   p.signature = { name: d.name, date: d.date || today(), img: d.img || strokesToImg(d.st, d.wh), remote: true }; p.selected = sel; p.status = 'signed';
@@ -1067,7 +1106,9 @@ async function importReply(code, fromPaste) {
   const changed = Math.abs((optSum(p)[sel] || 0) - (d.total || 0)) > 0.01;
   if (changed) log(j, `Ojo: el cliente firmó un total de ${money(d.total)}; la propuesta cambió después de enviarla`);
   if (['lead', 'inspeccion', 'propuesta'].includes(j.stage)) setStage(j, 'aprobado');
-  save(); go({ view: 'job', id: j.id, tab: 'propuesta' });
+  save();
+  if (auto) { if (route.id === j.id || ['panel', 'trabajos'].includes(route.view)) render(); }
+  else go({ view: 'job', id: j.id, tab: 'propuesta' });
   toast(changed ? `Firmada por ${d.name}, pero el total cambió desde que la enviaste` : `¡Propuesta firmada por ${d.name}!`);
   return true;
 }
@@ -1081,6 +1122,7 @@ async function startClientMode(code) {
   clientMode = true; document.body.classList.add('clientmode');
   let d; try { d = await unpack(code); } catch { $('#main').innerHTML = '<div class="panel empty"><b>Este enlace está incompleto.</b><span>Pide a tu contratista que te lo envíe de nuevo.</span></div>'; return; }
   state = { settings: { ...DEFAULT_SETTINGS, ...d.co }, catalog: [], seq: { order: 1, invoice: 1 }, jobs: [{ id: d.id, name: d.name, address: d.address, stage: 'propuesta', activity: [], measurement: d.m, proposal: { ...d.p, status: 'sent', selected: null, signature: null }, invoice: null, order: null }] };
+  if (d.cb && d.tk) clientSync = { cb: d.cb, tk: d.tk };
   route = { view: 'cliente', id: d.id };
   document.title = (d.co.company || 'SmartRoof') + ' · ' + (state.settings.lang === 'en' ? 'Proposal' : 'Propuesta');
   applyLang(); render();
@@ -1214,6 +1256,8 @@ function viewSettings() {
         <label class="field"><span>Intensidad de la marca de agua: <b id="wmVal">${s.wmOpacity ?? 8}%</b></span><input id="wmOp" type="range" min="3" max="25" value="${s.wmOpacity ?? 8}" data-inp="wmOp"></label>` : '<p class="small muted">PNG con fondo transparente se ve mejor.</p>'}
       </div>
       <label class="field"><span>Llave de Google Maps (para el satélite de Google)</span><input id="sGKey" data-chg="set" data-k="googleKey" value="${esc(s.googleKey || '')}" placeholder="AIza…" autocomplete="off"></label>
+      <div class="stack" style="gap:6px"><label class="field"><span>Firmas automáticas: dirección de Firebase</span><input id="sSync" data-chg="set" data-k="syncUrl" value="${esc(s.syncUrl || '')}" placeholder="https://tu-proyecto-default-rtdb.firebaseio.com" autocomplete="off"></label>
+        <div class="row"><button class="btn sm" data-act="testSync">Probar conexión</button><span class="small muted">${syncBase(s.syncUrl) ? '✓ Activas: la firma del cliente llega sola.' : 'Sin configurar: el cliente te regresa la firma por mensaje.'}</span></div></div>
       <label class="field"><span>Centro del mapa satelital (lat, lng)</span><input id="sHome" data-chg="setHome" value="${s.homeCenter.join(', ')}"></label>
     </div>
     <div class="stack">
@@ -1298,6 +1342,7 @@ const ACT = {
   delProposal: el => { if (!armed(el)) return; J().proposal = null; save(); render(); },
   shareProposal: () => shareModal(J()),
   pasteSig: () => pasteSigModal(),
+  testSync: () => testSync(),
   copyLink: () => copyText($('#shareLink').value, $('#shareLink')),
   copyReply: () => copyText(clientReply, null),
   nativeShare: el => { const url = el.dataset.which === 'reply' ? clientReply : $('#shareLink').value; navigator.share?.({ title: 'SmartRoof', text: el.dataset.text, url }).catch(() => { }); },
@@ -1364,7 +1409,7 @@ const CHG = {
   order: el => { const j = J(); j.order[el.dataset.k] = el.value; if (el.dataset.k === 'status') { log(j, `Pedido ${j.order.number}: ${el.value}`); render(); } save(); },
   estPrice: el => { state.settings.est[el.dataset.k][+el.dataset.i] = +el.value || 0; save(); render(); },
   cat: el => { const c = state.catalog[+el.dataset.i]; const k = el.dataset.k; c[k] = ['cost', 'price'].includes(k) ? +el.value || 0 : el.value; save(); if (['cost', 'price'].includes(k)) render(); },
-  set: el => { const k = el.dataset.k; state.settings[k] = k === 'taxRate' ? +el.value || 0 : el.value; save(); renderNav(); },
+  set: el => { const k = el.dataset.k; state.settings[k] = k === 'taxRate' ? +el.value || 0 : el.value; save(); renderNav(); if (k === 'syncUrl') { render(); pollSigs(); } },
   setHome: el => { const p = el.value.split(',').map(Number); if (p.length === 2 && p.every(isFinite)) { state.settings.homeCenter = p; save(); toast('Guardado'); } else toast('Escribe latitud y longitud separadas por coma'); },
 };
 const INP = {
@@ -1518,5 +1563,7 @@ else {
   applyLang();
   updLangBtn();
   updInstall();
+  pollSigs(); setInterval(pollSigs, 30000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) pollSigs(); });
   if (/^#f=/.test(_h)) importReply(_h.slice(3).match(/^[A-Za-z0-9_\-%]+/)?.[0] || '');
 }

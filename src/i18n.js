@@ -234,3 +234,11 @@ Object.assign(EN, {
   'y toca': 'and tap', 'Propuesta': 'Proposal',
 });
 EN_PATTERNS.unshift([/^Firma de (.+)$/, 'Signature from $1'], [/^\(opción «(.+)»\), pero el trabajo no está guardado en este navegador\.$/, (m, a) => `(option «${tr(a)}»), but the job isn't saved in this browser.`]);
+Object.assign(EN, {
+  'Firmas automáticas: dirección de Firebase': 'Automatic signatures: Firebase address', 'Probar conexión': 'Test connection',
+  '✓ Activas: la firma del cliente llega sola.': '✓ On: the customer\'s signature arrives automatically.', 'Sin configurar: el cliente te regresa la firma por mensaje.': 'Not set up: the customer sends the signature back by message.',
+  'No tiene que hacer nada más. Puede cerrar esta página.': 'You don\'t need to do anything else. You can close this page.',
+  'Esa dirección no parece de Firebase. Debe terminar en firebaseio.com o firebasedatabase.app': 'That doesn\'t look like a Firebase address. It must end in firebaseio.com or firebasedatabase.app',
+  '✓ Conexión lista. Las firmas llegarán solas.': '✓ Connected. Signatures will arrive automatically.', 'No se pudo conectar con Firebase. Revisa la dirección.': 'Couldn\'t connect to Firebase. Check the address.',
+});
+EN_PATTERNS.unshift([/^✓ ¡Listo! Su firma fue enviada a (.+)\.$/, '✓ Done! Your signature was sent to $1.'], [/^Firebase respondió con error (\d+)\. Revisa las reglas\.$/, 'Firebase returned error $1. Check the rules.']);
