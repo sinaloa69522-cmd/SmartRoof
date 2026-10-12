@@ -243,3 +243,11 @@ Object.assign(EN, {
 });
 EN_PATTERNS.unshift([/^✓ ¡Listo! Su firma fue enviada a (.+)\.$/, '✓ Done! Your signature was sent to $1.'], [/^Firebase respondió con error (\d+)\. Revisa las reglas\.$/, 'Firebase returned error $1. Check the rules.']);
 Object.assign(EN, { 'Versión de SmartRoof:': 'SmartRoof version:' });
+Object.assign(EN, {
+  'Pasar ajustes a otro aparato': 'Copy settings to another device', 'Copiar ajustes': 'Copy settings', '¿Copiar ajustes a este aparato?': 'Copy settings to this device?',
+  'Ajustes copiados a este aparato': 'Settings copied to this device', 'El enlace de ajustes está incompleto': 'The settings link is incomplete',
+  'Mándate este enlace a ti mismo y ábrelo en la tablet o el teléfono. Se copian tu empresa, el logo, la llave de Google y las firmas automáticas. Tus trabajos no se tocan.': 'Send this link to yourself and open it on the tablet or phone. It copies your company info, logo, Google key and automatic signatures. Your jobs are not touched.',
+  'Contiene tus llaves: no se lo mandes a clientes.': 'It contains your keys: don\'t send it to customers.', 'Ajustes de SmartRoof para mi otro aparato:': 'SmartRoof settings for my other device:',
+  'Se van a copiar los datos de': 'This will copy the settings of', ': logo, llave de Google y firmas automáticas. Tus trabajos de este aparato no se tocan.': ': logo, Google key and automatic signatures. Your jobs on this device are not touched.',
+});
+EN_PATTERNS.unshift([/^⚠ Esta llave no se ve completa: tiene (\d+) caracteres y una llave de Google tiene 39 y empieza con «AIza»\. Usa «Pasar ajustes a otro aparato» desde el equipo donde sí funciona\.$/, '⚠ This key looks incomplete: it has $1 characters, and a Google key has 39 and starts with «AIza». Use «Copy settings to another device» from the device where it works.']);

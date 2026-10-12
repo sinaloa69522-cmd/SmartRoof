@@ -110,7 +110,7 @@ const DEFAULT_SETTINGS = {
   est: { tab: [380, 460], arch: [470, 620], prem: [720, 960], metal: [950, 1350] },
 };
 
-const APP_VER = '8';
+const APP_VER = '9';
 // ---------- estado ----------
 const KEY = 'cumbrera-v1';
 let state;
@@ -1119,6 +1119,33 @@ function pasteSigModal() {
     <form class="stack" data-form="pasteSig"><textarea name="txt" rows="4" placeholder="Pega aquí el mensaje o el enlace" required></textarea>
     <div class="row" style="justify-content:flex-end"><button type="button" class="btn ghost" data-act="closeModal">Cancelar</button><button class="btn primary">Registrar firma</button></div></form>`);
 }
+// Pasar empresa, llaves y logo a otro aparato con un enlace, sin escribirlos a mano.
+const SHARE_KEYS = ['company', 'phone', 'email', 'license', 'currency', 'taxRate', 'terms', 'intro', 'googleKey', 'syncUrl', 'lang', 'wmOn', 'wmOpacity', 'homeCenter'];
+let pendingSettings = null;
+async function shareSettingsModal() {
+  openModal(`<h2>Pasar ajustes a otro aparato</h2><p class="small muted">Generando el enlace…</p>`);
+  const d = {}; for (const k of SHARE_KEYS) if (state.settings[k] != null) d[k] = state.settings[k];
+  d.logo = await shrinkImg(state.settings.logo, 500, 250, 'image/webp');
+  const url = appBase() + '#s=' + await pack(d);
+  const msg = tr('Ajustes de SmartRoof para mi otro aparato:');
+  openModal(`<h2>Pasar ajustes a otro aparato</h2>
+    <p class="small muted">Mándate este enlace a ti mismo y ábrelo en la tablet o el teléfono. Se copian tu empresa, el logo, la llave de Google y las firmas automáticas. Tus trabajos no se tocan.</p>
+    <p class="small" style="color:var(--bad,#c0392b)">Contiene tus llaves: no se lo mandes a clientes.</p>
+    <textarea id="shareLink" readonly rows="3" style="font-size:12px;word-break:break-all">${esc(url)}</textarea>
+    <div class="row" style="flex-wrap:wrap">
+      <a class="btn primary" target="_blank" rel="noopener" href="https://wa.me/?text=${encodeURIComponent(msg + ' ' + url)}">WhatsApp</a>
+      <a class="btn" href="mailto:${encodeURIComponent(state.settings.email || '')}?subject=${encodeURIComponent('SmartRoof')}&body=${encodeURIComponent(msg + '\n\n' + url)}">Correo</a>
+      <button class="btn" data-act="copyLink">Copiar enlace</button>
+      <span class="spacer"></span><button class="btn ghost" data-act="closeModal">Cerrar</button></div>`);
+}
+async function importSettings(code) {
+  history.replaceState(null, '', location.pathname + location.search);
+  try { pendingSettings = await unpack(code); } catch { toast('El enlace de ajustes está incompleto'); return; }
+  if (!pendingSettings.logo) delete pendingSettings.logo;
+  openModal(`<h2>¿Copiar ajustes a este aparato?</h2>
+    <p>Se van a copiar los datos de <b>${esc(pendingSettings.company || '')}</b>: logo, llave de Google y firmas automáticas. Tus trabajos de este aparato no se tocan.</p>
+    <div class="row" style="justify-content:flex-end"><button class="btn ghost" data-act="closeModal">Cancelar</button><button class="btn primary" data-act="applySettings">Copiar ajustes</button></div>`);
+}
 async function startClientMode(code) {
   clientMode = true; document.body.classList.add('clientmode');
   let d; try { d = await unpack(code); } catch { $('#main').innerHTML = '<div class="panel empty"><b>Este enlace está incompleto.</b><span>Pide a tu contratista que te lo envíe de nuevo.</span></div>'; return; }
@@ -1257,12 +1284,13 @@ function viewSettings() {
         <label class="field"><span>Intensidad de la marca de agua: <b id="wmVal">${s.wmOpacity ?? 8}%</b></span><input id="wmOp" type="range" min="3" max="25" value="${s.wmOpacity ?? 8}" data-inp="wmOp"></label>` : '<p class="small muted">PNG con fondo transparente se ve mejor.</p>'}
       </div>
       <label class="field"><span>Llave de Google Maps (para el satélite de Google)</span><input id="sGKey" data-chg="set" data-k="googleKey" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(s.googleKey || '')}" placeholder="AIza…" autocomplete="off"></label>
+      ${s.googleKey && !/^AIza[0-9A-Za-z_-]{35}$/.test(s.googleKey) ? `<p class="small" style="color:var(--bad,#c0392b);margin-top:-6px">⚠ Esta llave no se ve completa: tiene ${s.googleKey.length} caracteres y una llave de Google tiene 39 y empieza con «AIza». Usa «Pasar ajustes a otro aparato» desde el equipo donde sí funciona.</p>` : ''}
       <div class="stack" style="gap:6px"><label class="field"><span>Firmas automáticas: dirección de Firebase</span><input id="sSync" data-chg="set" data-k="syncUrl" type="url" autocapitalize="off" autocorrect="off" spellcheck="false" value="${esc(s.syncUrl || '')}" placeholder="https://tu-proyecto-default-rtdb.firebaseio.com" autocomplete="off"></label>
         <div class="row"><button class="btn sm" data-act="testSync">Probar conexión</button><span class="small muted">${syncBase(s.syncUrl) ? '✓ Activas: la firma del cliente llega sola.' : 'Sin configurar: el cliente te regresa la firma por mensaje.'}</span></div></div>
       <label class="field"><span>Centro del mapa satelital (lat, lng)</span><input id="sHome" data-chg="setHome" value="${s.homeCenter.join(', ')}"></label>
     </div>
     <div class="stack">
-      <div class="panel stack"><h3>Respaldo</h3><p class="small muted">Versión de SmartRoof: <b>${APP_VER}</b></p><p class="small muted">Los datos se guardan en este navegador. Copia un respaldo para pasarlos a otro equipo.</p>
+      <div class="panel stack"><h3>Respaldo</h3><p class="small muted">Versión de SmartRoof: <b>${APP_VER}</b></p><button class="btn sm" data-act="shareSettings" style="align-self:flex-start">Pasar ajustes a otro aparato</button><p class="small muted">Los datos se guardan en este navegador. Copia un respaldo para pasarlos a otro equipo.</p>
         <div class="row"><button class="btn" data-act="backup">Copiar respaldo</button><button class="btn" data-act="showImport">Importar respaldo</button></div>
         <textarea id="copyFallback" hidden readonly style="min-height:100px"></textarea>
         <form class="stack" data-form="import" id="importForm" hidden><textarea id="importText" name="t" placeholder="Pega aquí el respaldo"></textarea><button class="btn primary">Importar y reemplazar datos</button></form>
@@ -1344,6 +1372,8 @@ const ACT = {
   shareProposal: () => shareModal(J()),
   pasteSig: () => pasteSigModal(),
   testSync: () => testSync(),
+  shareSettings: () => shareSettingsModal(),
+  applySettings: () => { const d = pendingSettings; if (!d) return; Object.assign(state.settings, d); if (d.googleKey) state.settings.satSource = 'google'; pendingSettings = null; save(); closeModal(); applyLang(); render(); updLangBtn(); pollSigs(); toast('Ajustes copiados a este aparato'); },
   copyLink: () => copyText($('#shareLink').value, $('#shareLink')),
   copyReply: () => copyText(clientReply, null),
   nativeShare: el => { const url = el.dataset.which === 'reply' ? clientReply : $('#shareLink').value; navigator.share?.({ title: 'SmartRoof', text: el.dataset.text, url }).catch(() => { }); },
@@ -1507,7 +1537,7 @@ document.addEventListener('drop', e => {
   const col = e.target.closest?.('.col'); if (!col) return; e.preventDefault();
   const j = getJob(e.dataTransfer.getData('text/plain')); if (j) { setStage(j, col.dataset.stage); save(); render(); toast(`${j.name} → ${stageName(col.dataset.stage)}`); }
 });
-window.addEventListener('hashchange', () => { if (clientMode) return; if (/^#f=/.test(location.hash)) { importReply(location.hash.slice(3).match(/^[A-Za-z0-9_\-%]+/)?.[0] || ''); return; } const r = parseHash(); if (JSON.stringify(r) !== JSON.stringify(route)) go(r); });
+window.addEventListener('hashchange', () => { if (clientMode) return; if (/^#s=/.test(location.hash)) { importSettings(location.hash.slice(3).match(/^[A-Za-z0-9_\-%]+/)?.[0] || ''); return; } if (/^#f=/.test(location.hash)) { importReply(location.hash.slice(3).match(/^[A-Za-z0-9_\-%]+/)?.[0] || ''); return; } const r = parseHash(); if (JSON.stringify(r) !== JSON.stringify(route)) go(r); });
 
 // ---------- instalar como app ----------
 let installEvt = null;
@@ -1575,5 +1605,6 @@ else {
   updInstall();
   pollSigs(); setInterval(pollSigs, 30000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) pollSigs(); });
+  if (/^#s=/.test(_h)) importSettings(_h.slice(3).match(/^[A-Za-z0-9_\-%]+/)?.[0] || '');
   if (/^#f=/.test(_h)) importReply(_h.slice(3).match(/^[A-Za-z0-9_\-%]+/)?.[0] || '');
 }
